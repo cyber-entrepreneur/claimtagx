@@ -13,7 +13,7 @@ import {
 } from "@workspace/db";
 import { and, desc, eq } from "drizzle-orm";
 import { logger } from "../lib/logger";
-import { ensureCrmSeeded } from "../lib/crm/seed";
+import { ensureCrmSeeded, publicTaxonomyFallback } from "../lib/crm/seed";
 import { rateLimitOk, submitInquiry } from "../lib/crm/orchestrator";
 import { writeAudit } from "../lib/crm/audit";
 import { enqueueJob } from "../lib/crm/jobs";
@@ -60,45 +60,53 @@ const SubmitBody = z.object({
   honeypot: z.string().max(200).optional(),
 });
 
-router.get("/contact/bootstrap", async (req, res, next) => {
+router.get("/contact/bootstrap", async (req, res) => {
+  const headerCountry = String(req.headers["cf-ipcountry"] ?? "")
+    .toUpperCase()
+    .replace("XX", "")
+    .replace("T1", "");
+  const detected = headerCountry.length === 2 ? headerCountry : null;
+  const countries = getCountries()
+    .map((code) => ({
+      code,
+      name: countryName(code),
+      callingCode: `+${getCountryCallingCode(code)}`,
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+
+  let taxonomy = publicTaxonomyFallback();
+  let termsVersion = "2026-04-20";
+  let privacyPolicyVersion = "2026-04-20";
+
   try {
     await ensureCrmSeeded();
-    const taxonomy = await db
+    const rows = await db
       .select()
       .from(crmTaxonomyTable)
       .where(eq(crmTaxonomyTable.active, true));
+    if (rows.length > 0) taxonomy = rows;
     const [policies] = await db
       .select()
       .from(crmConfigTable)
       .where(eq(crmConfigTable.key, "policies"))
       .limit(1);
-    const headerCountry = String(req.headers["cf-ipcountry"] ?? "")
-      .toUpperCase()
-      .replace("XX", "")
-      .replace("T1", "");
-    const detected =
-      headerCountry.length === 2 ? headerCountry : null;
-    const countries = getCountries()
-      .map((code) => ({
-        code,
-        name: countryName(code),
-        callingCode: `+${getCountryCallingCode(code)}`,
-      }))
-      .sort((a, b) => a.name.localeCompare(b.name));
-    res.json({
-      countries,
-      detectedCountry: detected,
-      countryDetectionSource: detected ? "ip" : "none",
-      termsVersion: (policies?.value as { termsVersion?: string })?.termsVersion ?? "2026-04-20",
-      privacyPolicyVersion:
-        (policies?.value as { privacyPolicyVersion?: string })?.privacyPolicyVersion ??
-        "2026-04-20",
-      messageMaxLength: 8000,
-      taxonomy,
-    });
+    termsVersion = (policies?.value as { termsVersion?: string })?.termsVersion ?? termsVersion;
+    privacyPolicyVersion =
+      (policies?.value as { privacyPolicyVersion?: string })?.privacyPolicyVersion ??
+      privacyPolicyVersion;
   } catch (err) {
-    next(err);
+    logger.warn({ err }, "contact bootstrap falling back to built-in taxonomy");
   }
+
+  res.json({
+    countries,
+    detectedCountry: detected,
+    countryDetectionSource: detected ? "ip" : "none",
+    termsVersion,
+    privacyPolicyVersion,
+    messageMaxLength: 8000,
+    taxonomy,
+  });
 });
 
 router.post("/contact/inquiries", async (req, res, next) => {

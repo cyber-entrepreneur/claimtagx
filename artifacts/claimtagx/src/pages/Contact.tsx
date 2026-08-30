@@ -5,12 +5,16 @@ import { AsYouType, parsePhoneNumberFromString } from "libphonenumber-js/max";
 import { Check, ChevronDown, Loader2 } from "lucide-react";
 import SEO from "@/components/SEO";
 import { track } from "@/lib/analytics";
+import { fetchBootstrap, submitInquiry } from "@/lib/contactApi";
 import {
-  fetchBootstrap,
-  submitInquiry,
-  type ContactBootstrap,
-  type TaxonomyItem,
-} from "@/lib/contactApi";
+  buildCountryList,
+  localeCountryGuess,
+  questionsFromTaxonomy,
+  useCasesFromTaxonomy,
+  type CatalogQuestion,
+} from "@/lib/contactCatalog";
+
+const COUNTRIES = buildCountryList();
 
 function flagEmoji(code: string): string {
   return code
@@ -44,25 +48,20 @@ function attribution() {
   };
 }
 
-function optionsFor(taxonomy: TaxonomyItem[], kind: string, parentKey?: string) {
-  return taxonomy
-    .filter((t) => t.kind === kind && (parentKey === undefined || t.parentKey === parentKey))
-    .sort((a, b) => a.sortOrder - b.sortOrder);
-}
-
 const fieldClass =
   "w-full rounded-xl border border-white/10 bg-white/[0.04] px-4 py-3 text-white placeholder:text-slate/70 focus:outline-none focus:ring-2 focus:ring-lime/60 focus:border-lime/40";
 
 export default function Contact() {
-  const [boot, setBoot] = useState<ContactBootstrap | null>(null);
-  const [bootError, setBootError] = useState<string | null>(null);
+  const [countries] = useState(COUNTRIES);
+  const [useCaseOptions, setUseCaseOptions] = useState(() => useCasesFromTaxonomy([]));
+  const [questions, setQuestions] = useState<CatalogQuestion[]>(() => questionsFromTaxonomy([]));
   const [countryOpen, setCountryOpen] = useState(false);
   const [countryQuery, setCountryQuery] = useState("");
-  const [country, setCountry] = useState("");
+  const [country, setCountry] = useState(() => localeCountryGuess() ?? "");
+  const [detectedCountry, setDetectedCountry] = useState<string | null>(null);
   const [phoneNational, setPhoneNational] = useState("");
   const [useCases, setUseCases] = useState<string[]>([]);
   const [useCaseOther, setUseCaseOther] = useState("");
-  const [qualOpen, setQualOpen] = useState(false);
   const [answers, setAnswers] = useState<Record<string, { optionKeys: string[]; freeText?: string }>>(
     {},
   );
@@ -79,31 +78,44 @@ export default function Contact() {
   const started = useRef(false);
   const idempotencyKey = useRef(crypto.randomUUID());
   const formRef = useRef<HTMLFormElement>(null);
+  const countryBoxRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     track("form_view", { form: "contact_us" });
-    fetchBootstrap()
-      .then((data) => {
-        setBoot(data);
-        if (data.detectedCountry) setCountry(data.detectedCountry);
-      })
-      .catch((err: Error) => setBootError(err.message));
+    fetchBootstrap().then((data) => {
+      if (!data) return;
+      if (data.taxonomy?.length) {
+        setUseCaseOptions(useCasesFromTaxonomy(data.taxonomy));
+        setQuestions(questionsFromTaxonomy(data.taxonomy));
+      }
+      if (data.detectedCountry) {
+        setDetectedCountry(data.detectedCountry);
+        setCountry(data.detectedCountry);
+      }
+    });
   }, []);
 
-  const selectedCountry = boot?.countries.find((c) => c.code === country);
+  useEffect(() => {
+    function onDocClick(e: MouseEvent) {
+      if (!countryBoxRef.current?.contains(e.target as Node)) setCountryOpen(false);
+    }
+    document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, []);
+
+  const selectedCountry = countries.find((c) => c.code === country);
   const callingCode = selectedCountry?.callingCode ?? "";
 
   const filteredCountries = useMemo(() => {
-    if (!boot) return [];
     const q = countryQuery.trim().toLowerCase();
-    if (!q) return boot.countries;
-    return boot.countries.filter(
+    if (!q) return countries;
+    return countries.filter(
       (c) =>
         c.name.toLowerCase().includes(q) ||
         c.code.toLowerCase().includes(q) ||
-        c.callingCode.includes(q),
+        c.callingCode.includes(q.replace(/^\+/, "")),
     );
-  }, [boot, countryQuery]);
+  }, [countries, countryQuery]);
 
   function markStarted() {
     if (started.current) return;
@@ -131,6 +143,14 @@ export default function Contact() {
     if (!iso) return raw;
     const typer = new AsYouType(iso as never);
     return typer.input(raw);
+  }
+
+  function pickCountry(code: string) {
+    setCountry(code);
+    setCountryOpen(false);
+    setCountryQuery("");
+    setPhoneNational("");
+    markStarted();
   }
 
   function validate(form: FormData): Record<string, string> {
@@ -221,9 +241,8 @@ export default function Contact() {
     }
   }
 
-  const useCaseOptions = boot ? optionsFor(boot.taxonomy, "use_case") : [];
-  const questions = boot ? optionsFor(boot.taxonomy, "question") : [];
   const currentSolution = answers.current_solution?.optionKeys[0];
+  const showCurrentFollowUp = currentSolution === "yes" || currentSolution === "partially";
 
   return (
     <>
@@ -232,9 +251,9 @@ export default function Contact() {
         description="Contact ClaimTagX. We'll route your inquiry to the right team."
         url="https://claimtagx.com/contact"
       />
-      <section className="relative min-h-[calc(100svh-4.5rem)] overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-mesh" />
-        <div className="absolute inset-0 bg-grid-pattern opacity-40" />
+      <section className="relative min-h-[calc(100svh-4.5rem)]">
+        <div className="absolute inset-0 bg-gradient-mesh pointer-events-none" />
+        <div className="absolute inset-0 bg-grid-pattern opacity-40 pointer-events-none" />
         <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-28 md:pt-32 pb-20 grid lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] gap-12 lg:gap-16 items-start">
           <motion.div
             initial={{ opacity: 0, y: 16 }}
@@ -266,16 +285,6 @@ export default function Contact() {
                 className="space-y-6"
                 noValidate
               >
-                <noscript>
-                  <p className="text-amber-200 text-sm">
-                    JavaScript is required to validate your phone number and submit this form.
-                  </p>
-                </noscript>
-                {bootError && (
-                  <p role="alert" className="text-red-300 text-sm">
-                    {bootError}
-                  </p>
-                )}
                 <div className="grid sm:grid-cols-2 gap-4">
                   <Field label="First name" name="firstName" error={errors.firstName} required />
                   <Field label="Last name" name="lastName" error={errors.lastName} required />
@@ -284,55 +293,66 @@ export default function Contact() {
                 <Field label="Company name" name="companyName" error={errors.companyName} required />
                 <Field label="Email address" name="email" type="email" error={errors.email} required autoComplete="email" />
 
-                <div>
-                  <label className="block text-sm font-medium text-white mb-2" id="country-label">
+                <div ref={countryBoxRef} className="relative z-20">
+                  <label className="block text-sm font-medium text-white mb-2" htmlFor="country-search">
                     Country
                   </label>
-                  <button
-                    type="button"
-                    aria-labelledby="country-label"
-                    aria-expanded={countryOpen}
-                    aria-haspopup="listbox"
-                    onClick={() => setCountryOpen((v) => !v)}
-                    className={`${fieldClass} flex items-center justify-between text-left`}
-                  >
-                    <span>
-                      {selectedCountry
-                        ? `${flagEmoji(selectedCountry.code)} ${selectedCountry.name}`
-                        : "Select country"}
-                    </span>
-                    <ChevronDown className="w-4 h-4 text-slate" />
-                  </button>
+                  <div className="relative">
+                    <input
+                      id="country-search"
+                      name="country"
+                      autoComplete="country-name"
+                      value={
+                        countryOpen
+                          ? countryQuery
+                          : selectedCountry
+                            ? `${selectedCountry.name} (${selectedCountry.callingCode})`
+                            : countryQuery
+                      }
+                      placeholder="Search or select a country"
+                      onFocus={() => {
+                        setCountryOpen(true);
+                        setCountryQuery("");
+                      }}
+                      onChange={(e) => {
+                        setCountryOpen(true);
+                        setCountryQuery(e.target.value);
+                        markStarted();
+                      }}
+                      className={`${fieldClass} pr-10`}
+                      aria-expanded={countryOpen}
+                      aria-controls="country-list"
+                      aria-autocomplete="list"
+                      role="combobox"
+                    />
+                    <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate" />
+                  </div>
                   {countryOpen && (
-                    <div className="mt-2 rounded-xl border border-white/10 bg-obsidian p-2 max-h-64 overflow-auto">
-                      <input
-                        value={countryQuery}
-                        onChange={(e) => setCountryQuery(e.target.value)}
-                        placeholder="Search country"
-                        className={`${fieldClass} mb-2`}
-                        aria-label="Search country"
-                      />
-                      <ul role="listbox" className="space-y-1">
-                        {filteredCountries.map((c) => (
-                          <li key={c.code}>
+                    <ul
+                      id="country-list"
+                      role="listbox"
+                      className="absolute left-0 right-0 mt-2 z-50 max-h-64 overflow-auto rounded-xl border border-white/10 bg-[#0B1220] p-2 shadow-2xl"
+                    >
+                      {filteredCountries.length === 0 ? (
+                        <li className="px-3 py-2 text-sm text-slate">No matching country.</li>
+                      ) : (
+                        filteredCountries.map((c) => (
+                          <li key={c.code} role="option" aria-selected={c.code === country}>
                             <button
                               type="button"
-                              className="w-full text-left px-3 py-2 rounded-lg hover:bg-white/5 text-sm"
-                              onClick={() => {
-                                setCountry(c.code);
-                                setCountryOpen(false);
-                                setPhoneNational("");
-                              }}
+                              className="w-full text-left px-3 py-2 rounded-lg hover:bg-white/5 text-sm text-white"
+                              onMouseDown={(e) => e.preventDefault()}
+                              onClick={() => pickCountry(c.code)}
                             >
                               {flagEmoji(c.code)} {c.name}
                               <span className="text-slate ml-2">{c.callingCode}</span>
                             </button>
                           </li>
-                        ))}
-                      </ul>
-                    </div>
+                        ))
+                      )}
+                    </ul>
                   )}
-                  {boot?.detectedCountry && country === boot.detectedCountry && (
+                  {detectedCountry && country === detectedCountry && (
                     <p className="text-xs text-slate mt-2">Suggested from your network location. You can change it.</p>
                   )}
                   {errors.country && <p className="text-red-300 text-sm mt-1">{errors.country}</p>}
@@ -378,6 +398,7 @@ export default function Contact() {
                           type="button"
                           aria-pressed={on}
                           onClick={() => {
+                            markStarted();
                             if (opt.key === "mixed") {
                               setUseCases((prev) =>
                                 prev.includes("mixed") ? prev.filter((k) => k !== "mixed") : [...prev, "mixed"],
@@ -424,90 +445,74 @@ export default function Contact() {
                     id="message"
                     name="message"
                     rows={6}
-                    maxLength={boot?.messageMaxLength ?? 8000}
+                    maxLength={8000}
                     className={fieldClass}
                     placeholder="What should we know about your operation?"
                   />
                   {errors.message && <p className="text-red-300 text-sm mt-1">{errors.message}</p>}
                 </div>
 
-                <div className="border-t border-white/10 pt-6">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const next = !qualOpen;
-                      setQualOpen(next);
-                      if (next) track("qualification_opened", {});
-                    }}
-                    className="flex items-center justify-between w-full text-left"
-                    aria-expanded={qualOpen}
-                  >
-                    <div>
-                      <p className="text-white font-semibold">Help us understand your requirements</p>
-                      <p className="text-sm text-slate mt-1">Optional — helps us send a more relevant response.</p>
-                    </div>
-                    <ChevronDown className={`w-5 h-5 text-slate transition ${qualOpen ? "rotate-180" : ""}`} />
-                  </button>
-                  {qualOpen && (
-                    <div className="mt-6 space-y-8">
-                      {questions.map((q) => {
-                        const opts = optionsFor(boot!.taxonomy, "option", q.key);
-                        const selected = answers[q.key]?.optionKeys ?? [];
-                        const multi = q.key === "improvements" || q.key === "objectives";
-                        return (
-                          <fieldset key={q.key}>
-                            <legend className="text-sm font-medium text-white mb-3">{q.label}</legend>
-                            <div className="flex flex-wrap gap-2">
-                              {opts.map((opt) => {
-                                const on = selected.includes(opt.key);
-                                return (
-                                  <button
-                                    key={opt.key}
-                                    type="button"
-                                    aria-pressed={on}
-                                    onClick={() =>
-                                      multi
-                                        ? toggleMulti(q.key, opt.key)
-                                        : setAnswer(q.key, { optionKeys: [opt.key] })
-                                    }
-                                    className={`px-3 py-2 rounded-full text-sm border ${
-                                      on
-                                        ? "bg-white text-obsidian border-white"
-                                        : "border-white/10 text-slate hover:text-white"
-                                    }`}
-                                  >
-                                    {opt.label}
-                                  </button>
-                                );
-                              })}
-                            </div>
-                            {q.key === "current_solution" &&
-                              (currentSolution === "yes" || currentSolution === "partially") && (
-                                <div className="mt-4 space-y-4">
-                                  <input
-                                    className={fieldClass}
-                                    placeholder="Which solution do you currently use?"
-                                    value={answers.current_solution?.freeText ?? ""}
-                                    onChange={(e) =>
-                                      setAnswer("current_solution", { freeText: e.target.value })
-                                    }
-                                  />
-                                </div>
-                              )}
-                            {q.key === "objectives" && (
-                              <textarea
-                                className={`${fieldClass} mt-4`}
-                                rows={3}
-                                placeholder="Tell us more about your requirements (optional)"
-                                value={answers.objectives?.freeText ?? ""}
-                                onChange={(e) => setAnswer("objectives", { freeText: e.target.value })}
-                              />
-                            )}
-                          </fieldset>
-                        );
-                      })}
-                    </div>
-                  )}
+                <div className="border-t border-white/10 pt-6 space-y-8">
+                  <div>
+                    <p className="text-white font-semibold">Help us understand your requirements</p>
+                    <p className="text-sm text-slate mt-1">
+                      Optional — these questions help us send a more relevant response. You can skip any of them.
+                    </p>
+                  </div>
+
+                  {questions.map((q) => {
+                    if (q.key === "improvements" && !showCurrentFollowUp) return null;
+                    const selected = answers[q.key]?.optionKeys ?? [];
+                    const multi = Boolean(q.multiple);
+                    return (
+                      <fieldset key={q.key}>
+                        <legend className="text-sm font-medium text-white mb-3">{q.label}</legend>
+                        <div className="flex flex-wrap gap-2">
+                          {q.options.map((opt) => {
+                            const on = selected.includes(opt.key);
+                            return (
+                              <button
+                                key={opt.key}
+                                type="button"
+                                aria-pressed={on}
+                                onClick={() =>
+                                  multi
+                                    ? toggleMulti(q.key, opt.key)
+                                    : setAnswer(q.key, { optionKeys: [opt.key] })
+                                }
+                                className={`px-3 py-2 rounded-full text-sm border ${
+                                  on
+                                    ? "bg-white text-obsidian border-white"
+                                    : "border-white/10 text-slate hover:text-white"
+                                }`}
+                              >
+                                {opt.label}
+                              </button>
+                            );
+                          })}
+                        </div>
+                        {q.key === "current_solution" && showCurrentFollowUp && (
+                          <input
+                            className={`${fieldClass} mt-4`}
+                            placeholder="Which solution do you currently use?"
+                            value={answers.current_solution?.freeText ?? ""}
+                            onChange={(e) =>
+                              setAnswer("current_solution", { freeText: e.target.value })
+                            }
+                          />
+                        )}
+                        {q.key === "objectives" && (
+                          <textarea
+                            className={`${fieldClass} mt-4`}
+                            rows={3}
+                            placeholder="Tell us more about your requirements (optional)"
+                            value={answers.objectives?.freeText ?? ""}
+                            onChange={(e) => setAnswer("objectives", { freeText: e.target.value })}
+                          />
+                        )}
+                      </fieldset>
+                    );
+                  })}
                 </div>
 
                 <label className="flex items-start gap-3 text-sm text-slate">
@@ -543,7 +548,7 @@ export default function Contact() {
 
                 <button
                   type="submit"
-                  disabled={submitting || !boot}
+                  disabled={submitting}
                   className="w-full sm:w-auto bg-lime text-obsidian px-8 py-3.5 rounded-xl font-bold disabled:opacity-60 inline-flex items-center justify-center gap-2"
                 >
                   {submitting && <Loader2 className="w-4 h-4 animate-spin" />}

@@ -300,6 +300,18 @@ const TAXONOMY: Array<{
   { kind: "option", key: "just_exploring", parentKey: "timeline", label: "Just exploring", sortOrder: 70 },
 ];
 
+export function publicTaxonomyFallback() {
+  return TAXONOMY.map((row) => ({
+    id: `local:${row.kind}:${row.parentKey ?? ""}:${row.key}`,
+    kind: row.kind,
+    key: row.key,
+    parentKey: row.parentKey ?? "",
+    label: row.label,
+    sortOrder: row.sortOrder,
+    active: true,
+  }));
+}
+
 async function upsertTaxonomy(): Promise<void> {
   for (const row of TAXONOMY) {
     await db

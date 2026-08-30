@@ -46,10 +46,16 @@ async function parseJson<T>(res: Response): Promise<T> {
   return JSON.parse(text) as T;
 }
 
-export async function fetchBootstrap(): Promise<ContactBootstrap> {
-  const res = await fetch(apiUrl("/api/contact/bootstrap"), { credentials: "omit" });
-  if (!res.ok) throw new Error("Unable to load the contact form.");
-  return parseJson<ContactBootstrap>(res);
+export async function fetchBootstrap(): Promise<ContactBootstrap | null> {
+  try {
+    const res = await fetch(apiUrl("/api/contact/bootstrap"), { credentials: "omit" });
+    if (!res.ok) return null;
+    const data = await parseJson<ContactBootstrap>(res);
+    if (!data || typeof data !== "object") return null;
+    return data;
+  } catch {
+    return null;
+  }
 }
 
 export async function submitInquiry(body: unknown): Promise<SubmitResult> {
