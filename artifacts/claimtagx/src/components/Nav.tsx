@@ -22,6 +22,7 @@ export default function Nav() {
     { name: 'How it works', href: isHome ? '#how' : '/#how', anchor: true },
     { name: 'Features', href: isHome ? '#features' : '/#features', anchor: true },
     { name: 'Industries', href: isHome ? '#industries' : '/#industries', anchor: true },
+    { name: 'Contact Us', href: '/contact', anchor: false },
     { name: 'Pricing', href: '/price', anchor: false },
   ];
 

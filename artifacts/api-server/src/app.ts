@@ -1,4 +1,5 @@
 import express, { type Express } from "express";
+import cookieParser from "cookie-parser";
 import cors, { type CorsOptions } from "cors";
 import pinoHttp from "pino-http";
 import { clerkMiddleware } from "@clerk/express";
@@ -71,7 +72,8 @@ app.use(
 app.use(CLERK_PROXY_PATH, clerkProxyMiddleware());
 
 app.use(cors(corsOptions));
-app.use(express.json());
+app.use(cookieParser());
+app.use(express.json({ limit: "256kb" }));
 app.use(express.urlencoded({ extended: true }));
 
 app.use(clerkMiddleware());

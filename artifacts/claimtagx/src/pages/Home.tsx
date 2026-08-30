@@ -14,6 +14,7 @@ import PricingTeaser from '@/components/sections/PricingTeaser';
 import FAQ from '@/components/sections/FAQ';
 import FinalCTA from '@/components/sections/FinalCTA';
 import StickyCTA from '@/components/StickyCTA';
+import ContactFab from '@/components/ContactFab';
 
 export default function Home() {
   return (
@@ -42,6 +43,7 @@ export default function Home() {
         <FinalCTA />
 
         <StickyCTA />
+        <ContactFab />
       </div>
     </>
   );

@@ -6,6 +6,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/not-found";
 
 import Home from "@/pages/Home";
+import Contact from "@/pages/Contact";
 import PricingPage from "@/pages/Pricing";
 import SolutionPage from "@/pages/Solution";
 import DemoTicket from "@/pages/DemoTicket";
@@ -20,6 +21,7 @@ import Refund from "@/pages/legal/Refund";
 import Nav from "@/components/Nav";
 import Footer from "@/components/Footer";
 import CookieBanner from "@/components/CookieBanner";
+import AdminApp from "@/pages/admin/AdminApp";
 
 const queryClient = new QueryClient();
 
@@ -50,6 +52,7 @@ function Router() {
   return (
     <Switch>
       <Route path="/" component={Home} />
+      <Route path="/contact" component={Contact} />
       <Route path="/solutions/:slug" component={SolutionPage} />
       <Route path="/demo-ticket" component={DemoTicket} />
       <Route path="/security" component={Security} />
@@ -76,18 +79,29 @@ function App() {
       <TooltipProvider>
         <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
           <ScrollToTop />
-          <div className="flex min-h-screen flex-col bg-obsidian text-paper font-sans">
-            <Nav />
-            <main className="flex-1">
-              <Router />
-            </main>
-            <Footer />
-            <CookieBanner />
-          </div>
+          <AppShell />
         </WouterRouter>
         <Toaster />
       </TooltipProvider>
     </QueryClientProvider>
+  );
+}
+
+function AppShell() {
+  const [location] = useLocation();
+  const isAdmin = location.startsWith("/admin");
+  if (isAdmin) {
+    return <AdminApp />;
+  }
+  return (
+    <div className="flex min-h-screen flex-col bg-obsidian text-paper font-sans">
+      <Nav />
+      <main className="flex-1">
+        <Router />
+      </main>
+      <Footer />
+      <CookieBanner />
+    </div>
   );
 }
 

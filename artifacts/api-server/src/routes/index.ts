@@ -8,6 +8,8 @@ import servicesRouter from "./services";
 import messagesRouter from "./messages";
 import intercomRouter from "./intercom";
 import marketingRouter from "./marketing";
+import contactRouter from "./contact";
+import platformContactRouter from "./platformContact";
 
 const router: IRouter = Router();
 
@@ -20,5 +22,7 @@ router.use(messagesRouter);
 router.use(intercomRouter);
 router.use(assetsRouter);
 router.use(marketingRouter);
+router.use(contactRouter);
+router.use(platformContactRouter);
 
 export default router;

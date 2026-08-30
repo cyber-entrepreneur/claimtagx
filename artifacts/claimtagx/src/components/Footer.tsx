@@ -63,7 +63,8 @@ export default function Footer() {
           <div className="col-span-1">
             <h4 className="text-white font-semibold text-sm mb-4 uppercase tracking-wider">Company</h4>
             <ul className="flex flex-col gap-3">
-              <li><a href="mailto:info@claimtagx.com" className="text-slate hover:text-lime transition-colors text-sm">Contact</a></li>
+              <li><Link href="/contact" className="text-slate hover:text-lime transition-colors text-sm">Contact Us</Link></li>
+              <li><a href="mailto:info@claimtagx.com" className="text-slate hover:text-lime transition-colors text-sm">Send us an Email</a></li>
               <li><a href="https://linkedin.com/company/Claimtagx" target="_blank" rel="noopener noreferrer" className="text-slate hover:text-lime transition-colors text-sm">LinkedIn</a></li>
               <li><a href="https://x.com/Claimtagx" target="_blank" rel="noopener noreferrer" className="text-slate hover:text-lime transition-colors text-sm">X</a></li>
               <li><a href="https://instagram.com/Claimtagx" target="_blank" rel="noopener noreferrer" className="text-slate hover:text-lime transition-colors text-sm">Instagram</a></li>

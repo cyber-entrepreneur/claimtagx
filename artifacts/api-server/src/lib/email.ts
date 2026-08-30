@@ -53,6 +53,10 @@ interface SendArgs {
   text: string;
 }
 
+export async function sendTransactionalEmail(args: SendArgs): Promise<void> {
+  await send(args);
+}
+
 async function send(args: SendArgs): Promise<void> {
   const client = getClient();
   if (!client) {

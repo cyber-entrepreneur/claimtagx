@@ -11,8 +11,20 @@ const router: IRouter = Router();
 const EVENT_NAMES = [
   "pageview",
   "industry_selected",
-  "cta_clicked",
-  "roi_calculated",
+    "cta_clicked",
+    "roi_calculated",
+    "form_view",
+    "form_start",
+    "form_field_error",
+    "qualification_opened",
+    "qualification_completed",
+    "submission_attempted",
+    "submission_failed",
+    "submission_succeeded",
+    "contact_qualified",
+    "scheduling_cta_shown",
+    "scheduling_cta_clicked",
+    "meeting_booked",
 ] as const;
 
 const EventBody = z.object({
