@@ -39,6 +39,7 @@ export interface PublicSubmission {
   email: string;
   country: string;
   phoneRaw: string;
+  inquiryType: "sales" | "general" | "technical" | "billing" | "other";
   useCaseKeys: string[];
   useCaseOther?: string;
   message: string;
@@ -346,13 +347,24 @@ export async function submitInquiry(
     useCaseKeys: input.useCaseKeys,
     answers: answersFlat,
   });
-  const outcome = scoreInquiry(facts, model);
-  const qualified = isImmediatelyQualified(outcome.status);
+  const isSales = input.inquiryType === "sales";
+  const outcome = isSales
+    ? scoreInquiry(facts, model)
+    : {
+        score: 0,
+        grade: "D",
+        status: "UNASSESSED",
+        reasons: [],
+        modelKey: model.key,
+        modelVersion: model.version,
+      };
+  const qualified = isSales && isImmediatelyQualified(outcome.status);
   facts.qualification = {
     status: outcome.status,
     score: outcome.score,
     immediatelyQualified: qualified,
   };
+  facts.inquiryType = input.inquiryType;
 
   const routing = await routeInquiry(facts);
   const message = sanitizeMessage(input.message, 8000);
@@ -379,7 +391,10 @@ export async function submitInquiry(
       qualifiedAt: qualified ? new Date() : null,
       lastCustomerMessageAt: new Date(),
       idempotencyKey: input.idempotencyKey,
-      attribution: input.attribution ?? {},
+      attribution: {
+        ...(input.attribution ?? {}),
+        inquiry_type: input.inquiryType,
+      },
     })
     .returning();
 

@@ -16,6 +16,7 @@ const EVENT_NAMES = [
     "form_view",
     "form_start",
     "form_field_error",
+    "inquiry_type_selected",
     "qualification_opened",
     "qualification_completed",
     "submission_attempted",

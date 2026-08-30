@@ -7,11 +7,16 @@ import SEO from "@/components/SEO";
 import { track } from "@/lib/analytics";
 import { fetchBootstrap, submitInquiry } from "@/lib/contactApi";
 import {
+  BILLING_QUESTIONS,
   buildCountryList,
+  INQUIRY_TYPES,
   localeCountryGuess,
+  MESSAGE_COPY,
   questionsFromTaxonomy,
+  TECHNICAL_QUESTIONS,
   useCasesFromTaxonomy,
   type CatalogQuestion,
+  type InquiryType,
 } from "@/lib/contactCatalog";
 
 const COUNTRIES = buildCountryList();
@@ -54,7 +59,10 @@ const fieldClass =
 export default function Contact() {
   const [countries] = useState(COUNTRIES);
   const [useCaseOptions, setUseCaseOptions] = useState(() => useCasesFromTaxonomy([]));
-  const [questions, setQuestions] = useState<CatalogQuestion[]>(() => questionsFromTaxonomy([]));
+  const [salesQuestions, setSalesQuestions] = useState<CatalogQuestion[]>(() =>
+    questionsFromTaxonomy([]),
+  );
+  const [inquiryType, setInquiryType] = useState<InquiryType | null>(null);
   const [countryOpen, setCountryOpen] = useState(false);
   const [countryQuery, setCountryQuery] = useState("");
   const [country, setCountry] = useState(() => localeCountryGuess() ?? "");
@@ -86,7 +94,7 @@ export default function Contact() {
       if (!data) return;
       if (data.taxonomy?.length) {
         setUseCaseOptions(useCasesFromTaxonomy(data.taxonomy));
-        setQuestions(questionsFromTaxonomy(data.taxonomy));
+        setSalesQuestions(questionsFromTaxonomy(data.taxonomy));
       }
       if (data.detectedCountry) {
         setDetectedCountry(data.detectedCountry);
@@ -123,6 +131,16 @@ export default function Contact() {
     track("form_start", { form: "contact_us" });
   }
 
+  function selectInquiryType(next: InquiryType) {
+    setInquiryType(next);
+    setUseCases([]);
+    setUseCaseOther("");
+    setAnswers({});
+    setErrors({});
+    markStarted();
+    track("inquiry_type_selected", { inquiry_type: next });
+  }
+
   function setAnswer(key: string, patch: { optionKeys?: string[]; freeText?: string }) {
     setAnswers((prev) => ({
       ...prev,
@@ -155,6 +173,7 @@ export default function Contact() {
 
   function validate(form: FormData): Record<string, string> {
     const next: Record<string, string> = {};
+    if (!inquiryType) next.inquiryType = "Select what this inquiry is about.";
     const firstName = String(form.get("firstName") ?? "").trim();
     const lastName = String(form.get("lastName") ?? "").trim();
     const jobTitle = String(form.get("jobTitle") ?? "").trim();
@@ -171,8 +190,12 @@ export default function Contact() {
       ? parsePhoneNumberFromString(`${callingCode} ${phoneNational}`, country as never)
       : undefined;
     if (!parsed?.isValid()) next.phone = "Enter a valid phone number for the selected country.";
-    if (useCases.length === 0) next.useCase = "Select at least one use case.";
-    if (useCases.includes("other") && !useCaseOther.trim()) next.useCaseOther = "Please specify your use case.";
+    if (inquiryType === "sales") {
+      if (useCases.length === 0) next.useCase = "Select at least one use case.";
+      if (useCases.includes("other") && !useCaseOther.trim()) {
+        next.useCaseOther = "Please specify your use case.";
+      }
+    }
     if (message.length < 10) next.message = "Tell us a little more so we can route your inquiry.";
     if (!consent) next.consent = "Please agree to the Terms and Privacy Policy.";
     return next;
@@ -180,7 +203,7 @@ export default function Contact() {
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    if (submitting) return;
+    if (submitting || !inquiryType) return;
     const form = new FormData(e.currentTarget);
     const nextErrors = validate(form);
     setErrors(nextErrors);
@@ -192,7 +215,7 @@ export default function Contact() {
     }
     setSubmitting(true);
     setSubmitError(null);
-    track("submission_attempted", { form: "contact_us" });
+    track("submission_attempted", { form: "contact_us", inquiry_type: inquiryType });
     try {
       const parsed = parsePhoneNumberFromString(
         `${callingCode} ${phoneNational}`,
@@ -206,19 +229,24 @@ export default function Contact() {
         email: String(form.get("email")).trim(),
         country,
         phoneRaw: parsed?.number ?? `${callingCode}${phoneNational}`,
-        useCaseKeys: useCases.includes("mixed")
-          ? useCases
-          : useCases.slice(0, 1).concat(useCases.filter((k) => k === "other")),
-        useCaseOther: useCases.includes("other") ? useCaseOther.trim() : undefined,
+        inquiryType,
+        useCaseKeys:
+          inquiryType === "sales"
+            ? useCases.includes("mixed")
+              ? useCases
+              : useCases.slice(0, 1).concat(useCases.filter((k) => k === "other"))
+            : [],
+        useCaseOther:
+          inquiryType === "sales" && useCases.includes("other") ? useCaseOther.trim() : undefined,
         message: String(form.get("message")).trim(),
-        answers,
+        answers: inquiryType === "general" || inquiryType === "other" ? {} : answers,
         termsAccepted: true,
         locale: navigator.language,
-        attribution: attribution(),
+        attribution: { ...attribution(), inquiry_type: inquiryType },
         idempotencyKey: idempotencyKey.current,
         honeypot: String(form.get("companyWebsite") ?? ""),
       });
-      track("submission_succeeded", { qualified: data.qualified });
+      track("submission_succeeded", { qualified: data.qualified, inquiry_type: inquiryType });
       if (data.qualified) {
         track("contact_qualified", {});
         track("scheduling_cta_shown", {});
@@ -243,6 +271,13 @@ export default function Contact() {
 
   const currentSolution = answers.current_solution?.optionKeys[0];
   const showCurrentFollowUp = currentSolution === "yes" || currentSolution === "partially";
+  const messageCopy = inquiryType ? MESSAGE_COPY[inquiryType] : null;
+  const sideQuestions =
+    inquiryType === "technical"
+      ? TECHNICAL_QUESTIONS
+      : inquiryType === "billing"
+        ? BILLING_QUESTIONS
+        : [];
 
   return (
     <>
@@ -285,135 +320,20 @@ export default function Contact() {
                 className="space-y-6"
                 noValidate
               >
-                <div className="grid sm:grid-cols-2 gap-4">
-                  <Field label="First name" name="firstName" error={errors.firstName} required />
-                  <Field label="Last name" name="lastName" error={errors.lastName} required />
-                </div>
-                <Field label="Job title" name="jobTitle" error={errors.jobTitle} required />
-                <Field label="Company name" name="companyName" error={errors.companyName} required />
-                <Field label="Email address" name="email" type="email" error={errors.email} required autoComplete="email" />
-
-                <div ref={countryBoxRef} className="relative z-20">
-                  <label className="block text-sm font-medium text-white mb-2" htmlFor="country-search">
-                    Country
-                  </label>
-                  <div className="relative">
-                    <input
-                      id="country-search"
-                      name="country"
-                      autoComplete="country-name"
-                      value={
-                        countryOpen
-                          ? countryQuery
-                          : selectedCountry
-                            ? `${selectedCountry.name} (${selectedCountry.callingCode})`
-                            : countryQuery
-                      }
-                      placeholder="Search or select a country"
-                      onFocus={() => {
-                        setCountryOpen(true);
-                        setCountryQuery("");
-                      }}
-                      onChange={(e) => {
-                        setCountryOpen(true);
-                        setCountryQuery(e.target.value);
-                        markStarted();
-                      }}
-                      className={`${fieldClass} pr-10`}
-                      aria-expanded={countryOpen}
-                      aria-controls="country-list"
-                      aria-autocomplete="list"
-                      role="combobox"
-                    />
-                    <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate" />
-                  </div>
-                  {countryOpen && (
-                    <ul
-                      id="country-list"
-                      role="listbox"
-                      className="absolute left-0 right-0 mt-2 z-50 max-h-64 overflow-auto rounded-xl border border-white/10 bg-[#0B1220] p-2 shadow-2xl"
-                    >
-                      {filteredCountries.length === 0 ? (
-                        <li className="px-3 py-2 text-sm text-slate">No matching country.</li>
-                      ) : (
-                        filteredCountries.map((c) => (
-                          <li key={c.code} role="option" aria-selected={c.code === country}>
-                            <button
-                              type="button"
-                              className="w-full text-left px-3 py-2 rounded-lg hover:bg-white/5 text-sm text-white"
-                              onMouseDown={(e) => e.preventDefault()}
-                              onClick={() => pickCountry(c.code)}
-                            >
-                              {flagEmoji(c.code)} {c.name}
-                              <span className="text-slate ml-2">{c.callingCode}</span>
-                            </button>
-                          </li>
-                        ))
-                      )}
-                    </ul>
-                  )}
-                  {detectedCountry && country === detectedCountry && (
-                    <p className="text-xs text-slate mt-2">Suggested from your network location. You can change it.</p>
-                  )}
-                  {errors.country && <p className="text-red-300 text-sm mt-1">{errors.country}</p>}
-                </div>
-
-                <div>
-                  <span className="block text-sm font-medium text-white mb-2">Phone</span>
-                  <div className="grid grid-cols-[7rem_1fr] gap-3">
-                    <input
-                      readOnly
-                      value={callingCode || "+"}
-                      aria-label="Country calling code"
-                      className={`${fieldClass} font-mono`}
-                    />
-                    <input
-                      name="phone"
-                      inputMode="tel"
-                      autoComplete="tel-national"
-                      placeholder="Area / mobile + number"
-                      value={phoneNational}
-                      onChange={(e) =>
-                        setPhoneNational(formatNational(e.target.value, country))
-                      }
-                      className={fieldClass}
-                    />
-                  </div>
-                  <p className="text-xs text-slate mt-2">
-                    Include the local area or mobile prefix. We'll store an international number.
-                  </p>
-                  {errors.phone && <p className="text-red-300 text-sm mt-1">{errors.phone}</p>}
-                </div>
-
                 <fieldset>
                   <legend className="text-sm font-medium text-white mb-3">
-                    What do you use claim tag tickets for?
+                    What can we help you with?
                   </legend>
                   <div className="flex flex-wrap gap-2">
-                    {useCaseOptions.map((opt) => {
-                      const on = useCases.includes(opt.key);
+                    {INQUIRY_TYPES.map((opt) => {
+                      const on = inquiryType === opt.key;
                       return (
                         <button
                           key={opt.key}
                           type="button"
+                          name="inquiryType"
                           aria-pressed={on}
-                          onClick={() => {
-                            markStarted();
-                            if (opt.key === "mixed") {
-                              setUseCases((prev) =>
-                                prev.includes("mixed") ? prev.filter((k) => k !== "mixed") : [...prev, "mixed"],
-                              );
-                              return;
-                            }
-                            setUseCases((prev) => {
-                              if (prev.includes("mixed")) {
-                                return prev.includes(opt.key)
-                                  ? prev.filter((k) => k !== opt.key)
-                                  : [...prev, opt.key];
-                              }
-                              return prev.includes(opt.key) ? prev.filter((k) => k !== opt.key) : [opt.key];
-                            });
-                          }}
+                          onClick={() => selectInquiryType(opt.key)}
                           className={`px-3 py-2 rounded-full text-sm border transition ${
                             on
                               ? "bg-lime text-obsidian border-lime"
@@ -425,65 +345,177 @@ export default function Contact() {
                       );
                     })}
                   </div>
-                  {useCases.includes("other") && (
-                    <input
-                      className={`${fieldClass} mt-3`}
-                      placeholder="Please specify"
-                      value={useCaseOther}
-                      onChange={(e) => setUseCaseOther(e.target.value)}
-                    />
+                  {errors.inquiryType && (
+                    <p className="text-red-300 text-sm mt-2">{errors.inquiryType}</p>
                   )}
-                  {errors.useCase && <p className="text-red-300 text-sm mt-2">{errors.useCase}</p>}
-                  {errors.useCaseOther && <p className="text-red-300 text-sm mt-2">{errors.useCaseOther}</p>}
                 </fieldset>
 
-                <div>
-                  <label className="block text-sm font-medium text-white mb-2" htmlFor="message">
-                    Message
-                  </label>
-                  <textarea
-                    id="message"
-                    name="message"
-                    rows={6}
-                    maxLength={8000}
-                    className={fieldClass}
-                    placeholder="What should we know about your operation?"
-                  />
-                  {errors.message && <p className="text-red-300 text-sm mt-1">{errors.message}</p>}
-                </div>
+                {inquiryType && (
+                  <>
+                    <div className="grid sm:grid-cols-2 gap-4">
+                      <Field label="First name" name="firstName" error={errors.firstName} required />
+                      <Field label="Last name" name="lastName" error={errors.lastName} required />
+                    </div>
+                    <Field label="Job title" name="jobTitle" error={errors.jobTitle} required />
+                    <Field
+                      label="Company name"
+                      name="companyName"
+                      error={errors.companyName}
+                      required
+                    />
+                    <Field
+                      label="Email address"
+                      name="email"
+                      type="email"
+                      error={errors.email}
+                      required
+                      autoComplete="email"
+                    />
 
-                <div className="border-t border-white/10 pt-6 space-y-8">
-                  <div>
-                    <p className="text-white font-semibold">Help us understand your requirements</p>
-                    <p className="text-sm text-slate mt-1">
-                      Optional — these questions help us send a more relevant response. You can skip any of them.
-                    </p>
-                  </div>
+                    <div>
+                      <div className="grid grid-cols-1 sm:grid-cols-[minmax(0,1.15fr)_5.5rem_minmax(0,1.25fr)] gap-3 items-end">
+                        <div ref={countryBoxRef} className="relative z-20">
+                          <label
+                            className="block text-sm font-medium text-white mb-2"
+                            htmlFor="country-search"
+                          >
+                            Country
+                          </label>
+                          <div className="relative">
+                            <input
+                              id="country-search"
+                              name="country"
+                              autoComplete="country-name"
+                              value={
+                                countryOpen
+                                  ? countryQuery
+                                  : selectedCountry
+                                    ? selectedCountry.name
+                                    : countryQuery
+                              }
+                              placeholder="Search country"
+                              onFocus={() => {
+                                setCountryOpen(true);
+                                setCountryQuery("");
+                              }}
+                              onChange={(e) => {
+                                setCountryOpen(true);
+                                setCountryQuery(e.target.value);
+                                markStarted();
+                              }}
+                              className={`${fieldClass} pr-10`}
+                              aria-expanded={countryOpen}
+                              aria-controls="country-list"
+                              aria-autocomplete="list"
+                              role="combobox"
+                            />
+                            <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate" />
+                          </div>
+                          {countryOpen && (
+                            <ul
+                              id="country-list"
+                              role="listbox"
+                              className="absolute left-0 right-0 mt-2 z-50 max-h-64 overflow-auto rounded-xl border border-white/10 bg-[#0B1220] p-2 shadow-2xl"
+                            >
+                              {filteredCountries.length === 0 ? (
+                                <li className="px-3 py-2 text-sm text-slate">No matching country.</li>
+                              ) : (
+                                filteredCountries.map((c) => (
+                                  <li key={c.code} role="option" aria-selected={c.code === country}>
+                                    <button
+                                      type="button"
+                                      className="w-full text-left px-3 py-2 rounded-lg hover:bg-white/5 text-sm text-white"
+                                      onMouseDown={(e) => e.preventDefault()}
+                                      onClick={() => pickCountry(c.code)}
+                                    >
+                                      {flagEmoji(c.code)} {c.name}
+                                      <span className="text-slate ml-2">{c.callingCode}</span>
+                                    </button>
+                                  </li>
+                                ))
+                              )}
+                            </ul>
+                          )}
+                        </div>
 
-                  {questions.map((q) => {
-                    if (q.key === "improvements" && !showCurrentFollowUp) return null;
-                    const selected = answers[q.key]?.optionKeys ?? [];
-                    const multi = Boolean(q.multiple);
-                    return (
-                      <fieldset key={q.key}>
-                        <legend className="text-sm font-medium text-white mb-3">{q.label}</legend>
+                        <div>
+                          <label className="block text-sm font-medium text-white mb-2" htmlFor="calling-code">
+                            Code
+                          </label>
+                          <input
+                            id="calling-code"
+                            readOnly
+                            value={callingCode || "+"}
+                            aria-label="Country calling code"
+                            className={`${fieldClass} font-mono text-center px-2`}
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-sm font-medium text-white mb-2" htmlFor="phone">
+                            Phone number
+                          </label>
+                          <input
+                            id="phone"
+                            name="phone"
+                            inputMode="tel"
+                            autoComplete="tel-national"
+                            placeholder="Mobile / local number"
+                            value={phoneNational}
+                            onChange={(e) =>
+                              setPhoneNational(formatNational(e.target.value, country))
+                            }
+                            className={fieldClass}
+                          />
+                        </div>
+                      </div>
+                      {detectedCountry && country === detectedCountry && (
+                        <p className="text-xs text-slate mt-2">
+                          Country suggested from your network location. You can change it.
+                        </p>
+                      )}
+                      {errors.country && <p className="text-red-300 text-sm mt-1">{errors.country}</p>}
+                      {errors.phone && <p className="text-red-300 text-sm mt-1">{errors.phone}</p>}
+                    </div>
+
+                    {inquiryType === "sales" && (
+                      <fieldset>
+                        <legend className="text-sm font-medium text-white mb-3">
+                          What do you use claim tag tickets for?
+                        </legend>
                         <div className="flex flex-wrap gap-2">
-                          {q.options.map((opt) => {
-                            const on = selected.includes(opt.key);
+                          {useCaseOptions.map((opt) => {
+                            const on = useCases.includes(opt.key);
                             return (
                               <button
                                 key={opt.key}
                                 type="button"
                                 aria-pressed={on}
-                                onClick={() =>
-                                  multi
-                                    ? toggleMulti(q.key, opt.key)
-                                    : setAnswer(q.key, { optionKeys: [opt.key] })
-                                }
-                                className={`px-3 py-2 rounded-full text-sm border ${
+                                onClick={() => {
+                                  markStarted();
+                                  if (opt.key === "mixed") {
+                                    setUseCases((prev) =>
+                                      prev.includes("mixed")
+                                        ? prev.filter((k) => k !== "mixed")
+                                        : [...prev, "mixed"],
+                                    );
+                                    return;
+                                  }
+                                  setUseCases((prev) => {
+                                    if (prev.includes("mixed")) {
+                                      return prev.includes(opt.key)
+                                        ? prev.filter((k) => k !== opt.key)
+                                        : [...prev, opt.key];
+                                    }
+                                    return prev.includes(opt.key)
+                                      ? prev.filter((k) => k !== opt.key)
+                                      : [opt.key];
+                                  });
+                                }}
+                                className={`px-3 py-2 rounded-full text-sm border transition ${
                                   on
-                                    ? "bg-white text-obsidian border-white"
-                                    : "border-white/10 text-slate hover:text-white"
+                                    ? "bg-lime text-obsidian border-lime"
+                                    : "border-white/10 text-slate hover:border-lime/40 hover:text-white"
                                 }`}
                               >
                                 {opt.label}
@@ -491,69 +523,177 @@ export default function Contact() {
                             );
                           })}
                         </div>
-                        {q.key === "current_solution" && showCurrentFollowUp && (
+                        {useCases.includes("other") && (
                           <input
-                            className={`${fieldClass} mt-4`}
-                            placeholder="Which solution do you currently use?"
-                            value={answers.current_solution?.freeText ?? ""}
-                            onChange={(e) =>
-                              setAnswer("current_solution", { freeText: e.target.value })
-                            }
+                            className={`${fieldClass} mt-3`}
+                            placeholder="Please specify"
+                            value={useCaseOther}
+                            onChange={(e) => setUseCaseOther(e.target.value)}
                           />
                         )}
-                        {q.key === "objectives" && (
-                          <textarea
-                            className={`${fieldClass} mt-4`}
-                            rows={3}
-                            placeholder="Tell us more about your requirements (optional)"
-                            value={answers.objectives?.freeText ?? ""}
-                            onChange={(e) => setAnswer("objectives", { freeText: e.target.value })}
-                          />
+                        {errors.useCase && <p className="text-red-300 text-sm mt-2">{errors.useCase}</p>}
+                        {errors.useCaseOther && (
+                          <p className="text-red-300 text-sm mt-2">{errors.useCaseOther}</p>
                         )}
                       </fieldset>
-                    );
-                  })}
-                </div>
+                    )}
 
-                <label className="flex items-start gap-3 text-sm text-slate">
-                  <input
-                    type="checkbox"
-                    className="mt-1 accent-[#C6F24E]"
-                    checked={consent}
-                    onChange={(e) => setConsent(e.target.checked)}
-                  />
-                  <span>
-                    I agree to the{" "}
-                    <Link href="/terms" className="text-lime underline underline-offset-2">
-                      Terms &amp; Conditions
-                    </Link>{" "}
-                    and acknowledge the{" "}
-                    <Link href="/privacy" className="text-lime underline underline-offset-2">
-                      Privacy Policy
-                    </Link>
-                    .
-                  </span>
-                </label>
-                {errors.consent && <p className="text-red-300 text-sm">{errors.consent}</p>}
+                    {messageCopy && (
+                      <div>
+                        <label className="block text-sm font-medium text-white mb-2" htmlFor="message">
+                          {messageCopy.label}
+                        </label>
+                        <textarea
+                          id="message"
+                          name="message"
+                          rows={6}
+                          maxLength={8000}
+                          className={fieldClass}
+                          placeholder={messageCopy.placeholder}
+                        />
+                        {errors.message && (
+                          <p className="text-red-300 text-sm mt-1">{errors.message}</p>
+                        )}
+                      </div>
+                    )}
 
-                <div className="hidden" aria-hidden="true">
-                  <input name="companyWebsite" tabIndex={-1} autoComplete="off" />
-                </div>
+                    {inquiryType === "sales" && (
+                      <div className="border-t border-white/10 pt-6 space-y-8">
+                        <div>
+                          <p className="text-white font-semibold">
+                            Help us understand your requirements
+                          </p>
+                          <p className="text-sm text-slate mt-1">
+                            Optional — these questions help us send a more relevant response. You can
+                            skip any of them.
+                          </p>
+                        </div>
 
-                {submitError && (
-                  <p role="alert" className="text-red-300 text-sm">
-                    {submitError}
-                  </p>
+                        {salesQuestions.map((q) => {
+                          if (q.key === "improvements" && !showCurrentFollowUp) return null;
+                          const selected = answers[q.key]?.optionKeys ?? [];
+                          const multi = Boolean(q.multiple);
+                          return (
+                            <fieldset key={q.key}>
+                              <legend className="text-sm font-medium text-white mb-3">
+                                {q.label}
+                              </legend>
+                              <div className="flex flex-wrap gap-2">
+                                {q.options.map((opt) => {
+                                  const on = selected.includes(opt.key);
+                                  return (
+                                    <button
+                                      key={opt.key}
+                                      type="button"
+                                      aria-pressed={on}
+                                      onClick={() =>
+                                        multi
+                                          ? toggleMulti(q.key, opt.key)
+                                          : setAnswer(q.key, { optionKeys: [opt.key] })
+                                      }
+                                      className={`px-3 py-2 rounded-full text-sm border ${
+                                        on
+                                          ? "bg-white text-obsidian border-white"
+                                          : "border-white/10 text-slate hover:text-white"
+                                      }`}
+                                    >
+                                      {opt.label}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                              {q.key === "current_solution" && showCurrentFollowUp && (
+                                <input
+                                  className={`${fieldClass} mt-4`}
+                                  placeholder="Which solution do you currently use?"
+                                  value={answers.current_solution?.freeText ?? ""}
+                                  onChange={(e) =>
+                                    setAnswer("current_solution", { freeText: e.target.value })
+                                  }
+                                />
+                              )}
+                            </fieldset>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    {sideQuestions.length > 0 && (
+                      <div className="space-y-6">
+                        {sideQuestions.map((q) => {
+                          const selected = answers[q.key]?.optionKeys ?? [];
+                          return (
+                            <fieldset key={q.key}>
+                              <legend className="text-sm font-medium text-white mb-3">
+                                {q.label}
+                              </legend>
+                              <div className="flex flex-wrap gap-2">
+                                {q.options.map((opt) => {
+                                  const on = selected.includes(opt.key);
+                                  return (
+                                    <button
+                                      key={opt.key}
+                                      type="button"
+                                      aria-pressed={on}
+                                      onClick={() => setAnswer(q.key, { optionKeys: [opt.key] })}
+                                      className={`px-3 py-2 rounded-full text-sm border ${
+                                        on
+                                          ? "bg-white text-obsidian border-white"
+                                          : "border-white/10 text-slate hover:text-white"
+                                      }`}
+                                    >
+                                      {opt.label}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </fieldset>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    <label className="flex items-start gap-3 text-sm text-slate">
+                      <input
+                        type="checkbox"
+                        className="mt-1 accent-[#C6F24E]"
+                        checked={consent}
+                        onChange={(e) => setConsent(e.target.checked)}
+                      />
+                      <span>
+                        I agree to the{" "}
+                        <Link href="/terms" className="text-lime underline underline-offset-2">
+                          Terms &amp; Conditions
+                        </Link>{" "}
+                        and acknowledge the{" "}
+                        <Link href="/privacy" className="text-lime underline underline-offset-2">
+                          Privacy Policy
+                        </Link>
+                        .
+                      </span>
+                    </label>
+                    {errors.consent && <p className="text-red-300 text-sm">{errors.consent}</p>}
+
+                    <div className="hidden" aria-hidden="true">
+                      <input name="companyWebsite" tabIndex={-1} autoComplete="off" />
+                    </div>
+
+                    {submitError && (
+                      <p role="alert" className="text-red-300 text-sm">
+                        {submitError}
+                      </p>
+                    )}
+
+                    <button
+                      type="submit"
+                      disabled={submitting}
+                      className="w-full sm:w-auto bg-lime text-obsidian px-8 py-3.5 rounded-xl font-bold disabled:opacity-60 inline-flex items-center justify-center gap-2"
+                    >
+                      {submitting && <Loader2 className="w-4 h-4 animate-spin" />}
+                      {submitting ? "Submitting…" : "Submit"}
+                    </button>
+                  </>
                 )}
-
-                <button
-                  type="submit"
-                  disabled={submitting}
-                  className="w-full sm:w-auto bg-lime text-obsidian px-8 py-3.5 rounded-xl font-bold disabled:opacity-60 inline-flex items-center justify-center gap-2"
-                >
-                  {submitting && <Loader2 className="w-4 h-4 animate-spin" />}
-                  {submitting ? "Submitting…" : "Submit"}
-                </button>
               </form>
             )}
           </motion.div>
@@ -631,7 +771,8 @@ function Confirmation({
         </>
       ) : (
         <p className="text-slate leading-relaxed mb-8">
-          We've received your inquiry. A member of our team will review your message and respond as soon as possible.
+          We've received your inquiry. A member of our team will review your message and respond as
+          soon as possible.
         </p>
       )}
       <p className="text-sm text-slate mt-8 font-mono">Reference: {result.reference}</p>

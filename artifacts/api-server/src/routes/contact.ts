@@ -34,31 +34,42 @@ function countryName(code: string): string {
   }
 }
 
-const SubmitBody = z.object({
-  firstName: z.string().trim().min(1).max(80),
-  lastName: z.string().trim().min(1).max(80),
-  jobTitle: z.string().trim().min(1).max(120),
-  companyName: z.string().trim().min(1).max(160),
-  email: z.string().trim().email().max(254),
-  country: z.string().trim().length(2),
-  phoneRaw: z.string().trim().min(4).max(32),
-  useCaseKeys: z.array(z.string().min(1).max(64)).min(1).max(12),
-  useCaseOther: z.string().trim().max(160).optional(),
-  message: z.string().trim().min(10).max(8000),
-  answers: z
-    .record(
-      z.object({
-        optionKeys: z.array(z.string().max(64)).max(20).optional(),
-        freeText: z.string().max(2000).optional(),
-      }),
-    )
-    .optional(),
-  termsAccepted: z.literal(true),
-  locale: z.string().max(32).optional(),
-  attribution: z.record(z.unknown()).optional(),
-  idempotencyKey: z.string().uuid(),
-  honeypot: z.string().max(200).optional(),
-});
+const SubmitBody = z
+  .object({
+    firstName: z.string().trim().min(1).max(80),
+    lastName: z.string().trim().min(1).max(80),
+    jobTitle: z.string().trim().min(1).max(120),
+    companyName: z.string().trim().min(1).max(160),
+    email: z.string().trim().email().max(254),
+    country: z.string().trim().length(2),
+    phoneRaw: z.string().trim().min(4).max(32),
+    inquiryType: z.enum(["sales", "general", "technical", "billing", "other"]),
+    useCaseKeys: z.array(z.string().min(1).max(64)).max(12).default([]),
+    useCaseOther: z.string().trim().max(160).optional(),
+    message: z.string().trim().min(10).max(8000),
+    answers: z
+      .record(
+        z.object({
+          optionKeys: z.array(z.string().max(64)).max(20).optional(),
+          freeText: z.string().max(2000).optional(),
+        }),
+      )
+      .optional(),
+    termsAccepted: z.literal(true),
+    locale: z.string().max(32).optional(),
+    attribution: z.record(z.unknown()).optional(),
+    idempotencyKey: z.string().uuid(),
+    honeypot: z.string().max(200).optional(),
+  })
+  .superRefine((data, ctx) => {
+    if (data.inquiryType === "sales" && data.useCaseKeys.length === 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Select at least one use case.",
+        path: ["useCaseKeys"],
+      });
+    }
+  });
 
 router.get("/contact/bootstrap", async (req, res) => {
   const headerCountry = String(req.headers["cf-ipcountry"] ?? "")

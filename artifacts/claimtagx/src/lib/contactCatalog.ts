@@ -13,6 +13,81 @@ export interface CatalogQuestion {
   options: CatalogOption[];
 }
 
+export type InquiryType = "sales" | "general" | "technical" | "billing" | "other";
+
+export const INQUIRY_TYPES: Array<{ key: InquiryType; label: string }> = [
+  { key: "sales", label: "Sales" },
+  { key: "general", label: "General Inquiry" },
+  { key: "technical", label: "Technical Support" },
+  { key: "billing", label: "Billing Issues" },
+  { key: "other", label: "Other" },
+];
+
+export const MESSAGE_COPY: Record<
+  InquiryType,
+  { label: string; placeholder: string }
+> = {
+  sales: {
+    label: "Message",
+    placeholder: "What should we know about your operation?",
+  },
+  general: {
+    label: "What would you like to know about ClaimTagX?",
+    placeholder: "Ask us anything about ClaimTagX.",
+  },
+  technical: {
+    label: "Describe the technical issue you are facing",
+    placeholder: "Include steps to reproduce, error messages, and when it started.",
+  },
+  billing: {
+    label: "Describe your billing issue",
+    placeholder: "Include invoice numbers, dates, or account details if you have them.",
+  },
+  other: {
+    label: "Tell us what's on your mind",
+    placeholder: "Share whatever you'd like us to know.",
+  },
+};
+
+export const TECHNICAL_QUESTIONS: CatalogQuestion[] = [
+  {
+    key: "tech_area",
+    label: "Which area does this relate to?",
+    options: [
+      { key: "web_app", label: "Web application" },
+      { key: "mobile", label: "Mobile app" },
+      { key: "scanning", label: "Scanning / claim tags" },
+      { key: "integrations", label: "Integrations / API" },
+      { key: "hardware", label: "Hardware" },
+      { key: "other", label: "Other" },
+    ],
+  },
+  {
+    key: "tech_urgency",
+    label: "How urgent is this?",
+    options: [
+      { key: "blocking", label: "Blocking operations" },
+      { key: "degraded", label: "Degraded / workaround available" },
+      { key: "question", label: "Question / guidance" },
+    ],
+  },
+];
+
+export const BILLING_QUESTIONS: CatalogQuestion[] = [
+  {
+    key: "billing_topic",
+    label: "What is this about?",
+    options: [
+      { key: "invoice", label: "Invoice / receipt" },
+      { key: "subscription", label: "Subscription / plan" },
+      { key: "payment_failed", label: "Payment failed" },
+      { key: "refund", label: "Refund / credit" },
+      { key: "pricing", label: "Pricing clarification" },
+      { key: "other", label: "Other" },
+    ],
+  },
+];
+
 export const DEFAULT_USE_CASES: CatalogOption[] = [
   { key: "vehicles", label: "Vehicles" },
   { key: "baggage", label: "Baggage" },
