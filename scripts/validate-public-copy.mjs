@@ -1,5 +1,5 @@
-import { readFileSync, writeFileSync, readdirSync, statSync } from "node:fs";
-import { dirname, join, relative } from "node:path";
+import { mkdirSync, readFileSync, writeFileSync, readdirSync, statSync } from "node:fs";
+import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 /**
@@ -8,7 +8,9 @@ import { fileURLToPath } from "node:url";
  * Failures are category 8 (rendered hardcoded user-facing copy).
  */
 const here = dirname(fileURLToPath(import.meta.url));
-const claimtagx = join(here, "..", "artifacts", "claimtagx");
+const claimtagx = process.env.PUBLIC_COPY_CLAIMTAGX_ROOT
+  ? resolve(process.env.PUBLIC_COPY_CLAIMTAGX_ROOT)
+  : join(here, "..", "artifacts", "claimtagx");
 const root = join(claimtagx, "src");
 
 const TARGET_DIRS = [
@@ -321,7 +323,14 @@ const out = {
   verdict,
   findings: deduped,
 };
-writeFileSync(join(here, "..", "tmp", "public-copy-expression-disposition.json"), JSON.stringify(out, null, 2));
+const outputDirectory = process.env.PUBLIC_COPY_EVIDENCE_DIR
+  ? resolve(process.env.PUBLIC_COPY_EVIDENCE_DIR)
+  : join(here, "..", "tmp");
+mkdirSync(outputDirectory, { recursive: true });
+writeFileSync(
+  join(outputDirectory, "public-copy-expression-disposition.json"),
+  JSON.stringify(out, null, 2),
+);
 
 if (!engineeringPass) {
   console.error("Public-copy engineering FAIL:\n" + failures.join("\n"));
