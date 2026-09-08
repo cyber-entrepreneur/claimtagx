@@ -1,0 +1,980 @@
+{
+  "siteUrl": "https://claimtagx.com",
+  "routes": [
+    {
+      "path": "/",
+      "index": true,
+      "priority": "1.0",
+      "en": {
+        "title": "ClaimTagX — Digital Claim Tickets for Valet, Laundry, Luggage & Repair",
+        "description": "Replace paper claim tickets with secure digital tags. Photo intake, QR claim & release, full audit trail. No hardware, no patron app. Free plan — live in 60 seconds."
+      },
+      "ar": {
+        "title": "ClaimTagX — تذاكر رقمية لل valets والغسيل والأمتعة والإصلاح",
+        "description": "استبدل تذاكر الورق بتذاكر رقمية آمنة. استلام بالصور، QR للاستلام والتسليم، وسجل تدقيق كامل."
+      },
+      "jsonLd": {
+        "en": {
+          "@context": "https://schema.org",
+          "@type": "SoftwareApplication",
+          "name": "ClaimTagX",
+          "applicationCategory": "BusinessApplication",
+          "operatingSystem": "Web, iOS, Android",
+          "description": "Digital custody management platform that replaces paper claim tickets with secure digital tags for valet parking, dry cleaning, luggage check, and repair services.",
+          "url": "https://claimtagx.com/",
+          "offers": {
+            "@type": "AggregateOffer",
+            "lowPrice": "0",
+            "highPrice": "120",
+            "priceCurrency": "USD",
+            "offerCount": "5"
+          }
+        },
+        "ar": {
+          "@context": "https://schema.org",
+          "@type": "SoftwareApplication",
+          "name": "ClaimTagX",
+          "applicationCategory": "BusinessApplication",
+          "operatingSystem": "Web, iOS, Android",
+          "description": "استبدل تذاكر الورق بتذاكر رقمية آمنة. استلام بالصور، QR للاستلام والتسليم، وسجل تدقيق كامل.",
+          "url": "https://claimtagx.com/ar/",
+          "offers": {
+            "@type": "AggregateOffer",
+            "lowPrice": "0",
+            "highPrice": "120",
+            "priceCurrency": "USD",
+            "offerCount": "5"
+          }
+        }
+      }
+    },
+    {
+      "path": "/contact",
+      "index": true,
+      "priority": "0.8",
+      "en": {
+        "title": "Contact ClaimTagX",
+        "description": "Contact ClaimTagX. We'll route your inquiry to the right team."
+      },
+      "ar": {
+        "title": "تواصل مع ClaimTagX",
+        "description": "تواصل مع ClaimTagX. سنوجّه استفسارك إلى الفريق المناسب."
+      },
+      "jsonLd": {
+        "en": {
+          "@context": "https://schema.org",
+          "@type": "ContactPage",
+          "name": "Contact ClaimTagX",
+          "url": "https://claimtagx.com/contact",
+          "mainEntity": {
+            "@type": "Organization",
+            "name": "ClaimTagX",
+            "url": "https://claimtagx.com",
+            "email": "info@claimtagx.com"
+          }
+        },
+        "ar": {
+          "@context": "https://schema.org",
+          "@type": "ContactPage",
+          "name": "تواصل مع ClaimTagX",
+          "url": "https://claimtagx.com/ar/contact",
+          "mainEntity": {
+            "@type": "Organization",
+            "name": "ClaimTagX",
+            "url": "https://claimtagx.com",
+            "email": "info@claimtagx.com"
+          }
+        }
+      }
+    },
+    {
+      "path": "/price",
+      "index": true,
+      "priority": "0.8",
+      "en": {
+        "title": "ClaimTagX Pricing",
+        "description": "Simple per-ticket pricing for valet, dry cleaning, luggage, and repair operations."
+      },
+      "ar": {
+        "title": "أسعار ClaimTagX",
+        "description": "تسعير بسيط لكل تذكرة لعمليات valet والغسيل والأمتعة والإصلاح."
+      },
+      "jsonLd": {
+        "en": {
+          "@context": "https://schema.org",
+          "@type": "WebPage",
+          "name": "ClaimTagX Pricing",
+          "description": "Simple per-ticket pricing for valet, dry cleaning, luggage, and repair operations.",
+          "url": "https://claimtagx.com/price",
+          "inLanguage": "en",
+          "isPartOf": {
+            "@type": "WebSite",
+            "name": "ClaimTagX",
+            "url": "https://claimtagx.com/"
+          }
+        },
+        "ar": {
+          "@context": "https://schema.org",
+          "@type": "WebPage",
+          "name": "أسعار ClaimTagX",
+          "description": "تسعير بسيط لكل تذكرة لعمليات valet والغسيل والأمتعة والإصلاح.",
+          "url": "https://claimtagx.com/ar/price",
+          "inLanguage": "ar",
+          "isPartOf": {
+            "@type": "WebSite",
+            "name": "ClaimTagX",
+            "url": "https://claimtagx.com/"
+          }
+        }
+      }
+    },
+    {
+      "path": "/security",
+      "index": true,
+      "priority": "0.8",
+      "en": {
+        "title": "ClaimTagX Security",
+        "description": "How ClaimTagX protects custody data, tickets, and operator access."
+      },
+      "ar": {
+        "title": "أمان ClaimTagX",
+        "description": "كيف تحمي ClaimTagX بيانات الحفظ والتذاكر ووصول المشغّلين."
+      },
+      "jsonLd": {
+        "en": {
+          "@context": "https://schema.org",
+          "@type": "WebPage",
+          "name": "ClaimTagX Security",
+          "description": "How ClaimTagX protects custody data, tickets, and operator access.",
+          "url": "https://claimtagx.com/security",
+          "inLanguage": "en",
+          "isPartOf": {
+            "@type": "WebSite",
+            "name": "ClaimTagX",
+            "url": "https://claimtagx.com/"
+          }
+        },
+        "ar": {
+          "@context": "https://schema.org",
+          "@type": "WebPage",
+          "name": "أمان ClaimTagX",
+          "description": "كيف تحمي ClaimTagX بيانات الحفظ والتذاكر ووصول المشغّلين.",
+          "url": "https://claimtagx.com/ar/security",
+          "inLanguage": "ar",
+          "isPartOf": {
+            "@type": "WebSite",
+            "name": "ClaimTagX",
+            "url": "https://claimtagx.com/"
+          }
+        }
+      }
+    },
+    {
+      "path": "/privacy",
+      "index": true,
+      "priority": "0.3",
+      "robots": "index, follow",
+      "en": {
+        "title": "Privacy Policy — ClaimTagX",
+        "description": "ClaimTagX privacy policy."
+      },
+      "ar": {
+        "title": "سياسة الخصوصية — ClaimTagX",
+        "description": "سياسة خصوصية ClaimTagX."
+      },
+      "jsonLd": {
+        "en": {
+          "@context": "https://schema.org",
+          "@type": "WebPage",
+          "name": "Privacy Policy — ClaimTagX",
+          "description": "ClaimTagX privacy policy.",
+          "url": "https://claimtagx.com/privacy",
+          "inLanguage": "en",
+          "isPartOf": {
+            "@type": "WebSite",
+            "name": "ClaimTagX",
+            "url": "https://claimtagx.com/"
+          }
+        },
+        "ar": {
+          "@context": "https://schema.org",
+          "@type": "WebPage",
+          "name": "سياسة الخصوصية — ClaimTagX",
+          "description": "سياسة خصوصية ClaimTagX.",
+          "url": "https://claimtagx.com/ar/privacy",
+          "inLanguage": "ar",
+          "isPartOf": {
+            "@type": "WebSite",
+            "name": "ClaimTagX",
+            "url": "https://claimtagx.com/"
+          }
+        }
+      }
+    },
+    {
+      "path": "/terms",
+      "index": true,
+      "priority": "0.3",
+      "en": {
+        "title": "Terms of Service — ClaimTagX",
+        "description": "ClaimTagX terms of service."
+      },
+      "ar": {
+        "title": "شروط الخدمة — ClaimTagX",
+        "description": "شروط خدمة ClaimTagX."
+      },
+      "jsonLd": {
+        "en": {
+          "@context": "https://schema.org",
+          "@type": "WebPage",
+          "name": "Terms of Service — ClaimTagX",
+          "description": "ClaimTagX terms of service.",
+          "url": "https://claimtagx.com/terms",
+          "inLanguage": "en",
+          "isPartOf": {
+            "@type": "WebSite",
+            "name": "ClaimTagX",
+            "url": "https://claimtagx.com/"
+          }
+        },
+        "ar": {
+          "@context": "https://schema.org",
+          "@type": "WebPage",
+          "name": "شروط الخدمة — ClaimTagX",
+          "description": "شروط خدمة ClaimTagX.",
+          "url": "https://claimtagx.com/ar/terms",
+          "inLanguage": "ar",
+          "isPartOf": {
+            "@type": "WebSite",
+            "name": "ClaimTagX",
+            "url": "https://claimtagx.com/"
+          }
+        }
+      }
+    },
+    {
+      "path": "/gdpr",
+      "index": true,
+      "priority": "0.3",
+      "en": {
+        "title": "GDPR Compliance — ClaimTagX",
+        "description": "GDPR compliance information for ClaimTagX."
+      },
+      "ar": {
+        "title": "امتثال GDPR — ClaimTagX",
+        "description": "معلومات امتثال GDPR لـ ClaimTagX."
+      },
+      "jsonLd": {
+        "en": {
+          "@context": "https://schema.org",
+          "@type": "WebPage",
+          "name": "GDPR Compliance — ClaimTagX",
+          "description": "GDPR compliance information for ClaimTagX.",
+          "url": "https://claimtagx.com/gdpr",
+          "inLanguage": "en",
+          "isPartOf": {
+            "@type": "WebSite",
+            "name": "ClaimTagX",
+            "url": "https://claimtagx.com/"
+          }
+        },
+        "ar": {
+          "@context": "https://schema.org",
+          "@type": "WebPage",
+          "name": "امتثال GDPR — ClaimTagX",
+          "description": "معلومات امتثال GDPR لـ ClaimTagX.",
+          "url": "https://claimtagx.com/ar/gdpr",
+          "inLanguage": "ar",
+          "isPartOf": {
+            "@type": "WebSite",
+            "name": "ClaimTagX",
+            "url": "https://claimtagx.com/"
+          }
+        }
+      }
+    },
+    {
+      "path": "/dpa",
+      "index": true,
+      "priority": "0.3",
+      "en": {
+        "title": "Data Processing Addendum — ClaimTagX",
+        "description": "ClaimTagX Data Processing Addendum (DPA) for enterprise customers."
+      },
+      "ar": {
+        "title": "ملحق معالجة البيانات — ClaimTagX",
+        "description": "ملحق معالجة البيانات (DPA) لعملاء ClaimTagX المؤسسيين."
+      },
+      "jsonLd": {
+        "en": {
+          "@context": "https://schema.org",
+          "@type": "WebPage",
+          "name": "Data Processing Addendum — ClaimTagX",
+          "description": "ClaimTagX Data Processing Addendum (DPA) for enterprise customers.",
+          "url": "https://claimtagx.com/dpa",
+          "inLanguage": "en",
+          "isPartOf": {
+            "@type": "WebSite",
+            "name": "ClaimTagX",
+            "url": "https://claimtagx.com/"
+          }
+        },
+        "ar": {
+          "@context": "https://schema.org",
+          "@type": "WebPage",
+          "name": "ملحق معالجة البيانات — ClaimTagX",
+          "description": "ملحق معالجة البيانات (DPA) لعملاء ClaimTagX المؤسسيين.",
+          "url": "https://claimtagx.com/ar/dpa",
+          "inLanguage": "ar",
+          "isPartOf": {
+            "@type": "WebSite",
+            "name": "ClaimTagX",
+            "url": "https://claimtagx.com/"
+          }
+        }
+      }
+    },
+    {
+      "path": "/cookies",
+      "index": true,
+      "priority": "0.3",
+      "en": {
+        "title": "Cookie Policy — ClaimTagX",
+        "description": "How ClaimTagX uses cookies and similar technologies."
+      },
+      "ar": {
+        "title": "سياسة ملفات تعريف الارتباط — ClaimTagX",
+        "description": "كيف تستخدم ClaimTagX ملفات تعريف الارتباط والتقنيات المماثلة."
+      },
+      "jsonLd": {
+        "en": {
+          "@context": "https://schema.org",
+          "@type": "WebPage",
+          "name": "Cookie Policy — ClaimTagX",
+          "description": "How ClaimTagX uses cookies and similar technologies.",
+          "url": "https://claimtagx.com/cookies",
+          "inLanguage": "en",
+          "isPartOf": {
+            "@type": "WebSite",
+            "name": "ClaimTagX",
+            "url": "https://claimtagx.com/"
+          }
+        },
+        "ar": {
+          "@context": "https://schema.org",
+          "@type": "WebPage",
+          "name": "سياسة ملفات تعريف الارتباط — ClaimTagX",
+          "description": "كيف تستخدم ClaimTagX ملفات تعريف الارتباط والتقنيات المماثلة.",
+          "url": "https://claimtagx.com/ar/cookies",
+          "inLanguage": "ar",
+          "isPartOf": {
+            "@type": "WebSite",
+            "name": "ClaimTagX",
+            "url": "https://claimtagx.com/"
+          }
+        }
+      }
+    },
+    {
+      "path": "/aup",
+      "index": true,
+      "priority": "0.3",
+      "en": {
+        "title": "Acceptable Use Policy — ClaimTagX",
+        "description": "ClaimTagX acceptable use policy for platform operators and users."
+      },
+      "ar": {
+        "title": "سياسة الاستخدام المقبول — ClaimTagX",
+        "description": "سياسة الاستخدام المقبول لمشغّلي ومستخدمي ClaimTagX."
+      },
+      "jsonLd": {
+        "en": {
+          "@context": "https://schema.org",
+          "@type": "WebPage",
+          "name": "Acceptable Use Policy — ClaimTagX",
+          "description": "ClaimTagX acceptable use policy for platform operators and users.",
+          "url": "https://claimtagx.com/aup",
+          "inLanguage": "en",
+          "isPartOf": {
+            "@type": "WebSite",
+            "name": "ClaimTagX",
+            "url": "https://claimtagx.com/"
+          }
+        },
+        "ar": {
+          "@context": "https://schema.org",
+          "@type": "WebPage",
+          "name": "سياسة الاستخدام المقبول — ClaimTagX",
+          "description": "سياسة الاستخدام المقبول لمشغّلي ومستخدمي ClaimTagX.",
+          "url": "https://claimtagx.com/ar/aup",
+          "inLanguage": "ar",
+          "isPartOf": {
+            "@type": "WebSite",
+            "name": "ClaimTagX",
+            "url": "https://claimtagx.com/"
+          }
+        }
+      }
+    },
+    {
+      "path": "/refund",
+      "index": true,
+      "priority": "0.3",
+      "en": {
+        "title": "Refund Policy — ClaimTagX",
+        "description": "ClaimTagX refund and cancellation policy."
+      },
+      "ar": {
+        "title": "سياسة الاسترجاع — ClaimTagX",
+        "description": "سياسة الاسترجاع والإلغاء في ClaimTagX."
+      },
+      "jsonLd": {
+        "en": {
+          "@context": "https://schema.org",
+          "@type": "WebPage",
+          "name": "Refund Policy — ClaimTagX",
+          "description": "ClaimTagX refund and cancellation policy.",
+          "url": "https://claimtagx.com/refund",
+          "inLanguage": "en",
+          "isPartOf": {
+            "@type": "WebSite",
+            "name": "ClaimTagX",
+            "url": "https://claimtagx.com/"
+          }
+        },
+        "ar": {
+          "@context": "https://schema.org",
+          "@type": "WebPage",
+          "name": "سياسة الاسترجاع — ClaimTagX",
+          "description": "سياسة الاسترجاع والإلغاء في ClaimTagX.",
+          "url": "https://claimtagx.com/ar/refund",
+          "inLanguage": "ar",
+          "isPartOf": {
+            "@type": "WebSite",
+            "name": "ClaimTagX",
+            "url": "https://claimtagx.com/"
+          }
+        }
+      }
+    },
+    {
+      "path": "/demo-ticket",
+      "index": false,
+      "robots": "noindex, nofollow"
+    },
+    {
+      "path": "/solutions/valet",
+      "index": true,
+      "priority": "0.9",
+      "en": {
+        "title": "Valet Ticket Software — Digital Valet Claim Tickets | ClaimTagX",
+        "description": "Replace paper valet tickets with digital claim tags. Plate OCR, photo proof, SMS tickets, scan-to-release. Stop wrong-car releases and damage disputes. Free plan."
+      },
+      "ar": {
+        "title": "برنامج تذاكر صف السيارات — ClaimTagX",
+        "description": "استبدل تذاكر صف السيارات الورقية بتذاكر رقمية. OCR للوحة، صور، SMS، مسح للتسليم."
+      },
+      "jsonLd": {
+        "en": {
+          "@context": "https://schema.org",
+          "@type": "BreadcrumbList",
+          "itemListElement": [
+            {
+              "@type": "ListItem",
+              "position": 1,
+              "name": "Home",
+              "item": "https://claimtagx.com/"
+            },
+            {
+              "@type": "ListItem",
+              "position": 2,
+              "name": "Solutions",
+              "item": "https://claimtagx.com/#industries"
+            },
+            {
+              "@type": "ListItem",
+              "position": 3,
+              "name": "Valet Parking",
+              "item": "https://claimtagx.com/solutions/valet"
+            }
+          ]
+        },
+        "ar": {
+          "@context": "https://schema.org",
+          "@type": "BreadcrumbList",
+          "itemListElement": [
+            {
+              "@type": "ListItem",
+              "position": 1,
+              "name": "الرئيسية",
+              "item": "https://claimtagx.com/ar/"
+            },
+            {
+              "@type": "ListItem",
+              "position": 2,
+              "name": "الحلول",
+              "item": "https://claimtagx.com/ar/#industries"
+            },
+            {
+              "@type": "ListItem",
+              "position": 3,
+              "name": "صف السيارات",
+              "item": "https://claimtagx.com/ar/solutions/valet"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "path": "/solutions/dry-cleaning",
+      "index": true,
+      "priority": "0.9",
+      "en": {
+        "title": "Dry Cleaning Ticket Software — Digital Garment Tags | ClaimTagX",
+        "description": "Replace paper laundry tickets with digital tags. Photo proof of garment condition at drop-off, pickup verification, full audit trail. Free plan."
+      },
+      "ar": {
+        "title": "برنامج تذاكر الغسيل — ClaimTagX",
+        "description": "تذاكر رقمية للغسيل مع صور عند الاستلام والتسليم وسجل تدقيق كامل."
+      },
+      "jsonLd": {
+        "en": {
+          "@context": "https://schema.org",
+          "@type": "BreadcrumbList",
+          "itemListElement": [
+            {
+              "@type": "ListItem",
+              "position": 1,
+              "name": "Home",
+              "item": "https://claimtagx.com/"
+            },
+            {
+              "@type": "ListItem",
+              "position": 2,
+              "name": "Solutions",
+              "item": "https://claimtagx.com/#industries"
+            },
+            {
+              "@type": "ListItem",
+              "position": 3,
+              "name": "Dry Cleaning & Laundry",
+              "item": "https://claimtagx.com/solutions/dry-cleaning"
+            }
+          ]
+        },
+        "ar": {
+          "@context": "https://schema.org",
+          "@type": "BreadcrumbList",
+          "itemListElement": [
+            {
+              "@type": "ListItem",
+              "position": 1,
+              "name": "الرئيسية",
+              "item": "https://claimtagx.com/ar/"
+            },
+            {
+              "@type": "ListItem",
+              "position": 2,
+              "name": "الحلول",
+              "item": "https://claimtagx.com/ar/#industries"
+            },
+            {
+              "@type": "ListItem",
+              "position": 3,
+              "name": "الغسيل والتنظيف",
+              "item": "https://claimtagx.com/ar/solutions/dry-cleaning"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "path": "/solutions/luggage",
+      "index": true,
+      "priority": "0.9",
+      "en": {
+        "title": "Luggage Check Software — Digital Bag Check Tickets | ClaimTagX",
+        "description": "Replace paper bag check tickets with digital claim tags. Fast intake during checkout rush, QR claim, chain of custody for every bag. No patron app. Free plan."
+      },
+      "ar": {
+        "title": "برنامج تذاكر الأمتعة — ClaimTagX",
+        "description": "تذاكر رقمية لفحص الأمتعة مع مسح QR وسجل حفظ لكل حقيبة."
+      },
+      "jsonLd": {
+        "en": {
+          "@context": "https://schema.org",
+          "@type": "BreadcrumbList",
+          "itemListElement": [
+            {
+              "@type": "ListItem",
+              "position": 1,
+              "name": "Home",
+              "item": "https://claimtagx.com/"
+            },
+            {
+              "@type": "ListItem",
+              "position": 2,
+              "name": "Solutions",
+              "item": "https://claimtagx.com/#industries"
+            },
+            {
+              "@type": "ListItem",
+              "position": 3,
+              "name": "Luggage & Bag Check",
+              "item": "https://claimtagx.com/solutions/luggage"
+            }
+          ]
+        },
+        "ar": {
+          "@context": "https://schema.org",
+          "@type": "BreadcrumbList",
+          "itemListElement": [
+            {
+              "@type": "ListItem",
+              "position": 1,
+              "name": "الرئيسية",
+              "item": "https://claimtagx.com/ar/"
+            },
+            {
+              "@type": "ListItem",
+              "position": 2,
+              "name": "الحلول",
+              "item": "https://claimtagx.com/ar/#industries"
+            },
+            {
+              "@type": "ListItem",
+              "position": 3,
+              "name": "الأمتعة",
+              "item": "https://claimtagx.com/ar/solutions/luggage"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "path": "/solutions/repair",
+      "index": true,
+      "priority": "0.9",
+      "en": {
+        "title": "Repair Shop Ticket Software — Digital Work Order Tags | ClaimTagX",
+        "description": "Replace paper repair tickets with digital tags. Photo-documented intake, condition proof, customer notifications, verified pickup."
+      },
+      "ar": {
+        "title": "برنامج تذاكر الإصلاح — ClaimTagX",
+        "description": "تذاكر إصلاح رقمية مع توثيق بالصور وتسليم مُتحقق منه."
+      },
+      "jsonLd": {
+        "en": {
+          "@context": "https://schema.org",
+          "@type": "BreadcrumbList",
+          "itemListElement": [
+            {
+              "@type": "ListItem",
+              "position": 1,
+              "name": "Home",
+              "item": "https://claimtagx.com/"
+            },
+            {
+              "@type": "ListItem",
+              "position": 2,
+              "name": "Solutions",
+              "item": "https://claimtagx.com/#industries"
+            },
+            {
+              "@type": "ListItem",
+              "position": 3,
+              "name": "Repair Services",
+              "item": "https://claimtagx.com/solutions/repair"
+            }
+          ]
+        },
+        "ar": {
+          "@context": "https://schema.org",
+          "@type": "BreadcrumbList",
+          "itemListElement": [
+            {
+              "@type": "ListItem",
+              "position": 1,
+              "name": "الرئيسية",
+              "item": "https://claimtagx.com/ar/"
+            },
+            {
+              "@type": "ListItem",
+              "position": 2,
+              "name": "الحلول",
+              "item": "https://claimtagx.com/ar/#industries"
+            },
+            {
+              "@type": "ListItem",
+              "position": 3,
+              "name": "خدمات الإصلاح",
+              "item": "https://claimtagx.com/ar/solutions/repair"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "path": "/solutions/hotels",
+      "index": true,
+      "priority": "0.9",
+      "en": {
+        "title": "Hotel Custody Software — Valet, Luggage & Cloakroom Tickets | ClaimTagX",
+        "description": "One platform for hotel valet, bag storage, and cloakroom. Digital claim tickets with photo proof and a verified custody record across every station. No guest app. Free plan."
+      },
+      "ar": {
+        "title": "برنامج حفظ الفنادق — ClaimTagX",
+        "description": "منصة واحدة لصف السيارات والأمتعة والملابس في الفنادق."
+      },
+      "jsonLd": {
+        "en": {
+          "@context": "https://schema.org",
+          "@type": "BreadcrumbList",
+          "itemListElement": [
+            {
+              "@type": "ListItem",
+              "position": 1,
+              "name": "Home",
+              "item": "https://claimtagx.com/"
+            },
+            {
+              "@type": "ListItem",
+              "position": 2,
+              "name": "Solutions",
+              "item": "https://claimtagx.com/#industries"
+            },
+            {
+              "@type": "ListItem",
+              "position": 3,
+              "name": "Hotels & Resorts",
+              "item": "https://claimtagx.com/solutions/hotels"
+            }
+          ]
+        },
+        "ar": {
+          "@context": "https://schema.org",
+          "@type": "BreadcrumbList",
+          "itemListElement": [
+            {
+              "@type": "ListItem",
+              "position": 1,
+              "name": "الرئيسية",
+              "item": "https://claimtagx.com/ar/"
+            },
+            {
+              "@type": "ListItem",
+              "position": 2,
+              "name": "الحلول",
+              "item": "https://claimtagx.com/ar/#industries"
+            },
+            {
+              "@type": "ListItem",
+              "position": 3,
+              "name": "الفنادق والمنتجعات",
+              "item": "https://claimtagx.com/ar/solutions/hotels"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "path": "/solutions/clubs-restaurants",
+      "index": true,
+      "priority": "0.9",
+      "en": {
+        "title": "Coat Check & Valet Software for Clubs & Restaurants | ClaimTagX",
+        "description": "Digital coat check and valet tickets for nightclubs, restaurants, and lounges. Photo proof, lost-ticket lookup, one scan to return. No guest app. Free plan."
+      },
+      "ar": {
+        "title": "تذاكر الملابس وصف السيارات للمطاعم — ClaimTagX",
+        "description": "تذاكر رقمية لفحص الملابس وصف السيارات في المطاعم والنوادي."
+      },
+      "jsonLd": {
+        "en": {
+          "@context": "https://schema.org",
+          "@type": "BreadcrumbList",
+          "itemListElement": [
+            {
+              "@type": "ListItem",
+              "position": 1,
+              "name": "Home",
+              "item": "https://claimtagx.com/"
+            },
+            {
+              "@type": "ListItem",
+              "position": 2,
+              "name": "Solutions",
+              "item": "https://claimtagx.com/#industries"
+            },
+            {
+              "@type": "ListItem",
+              "position": 3,
+              "name": "Clubs & Restaurants",
+              "item": "https://claimtagx.com/solutions/clubs-restaurants"
+            }
+          ]
+        },
+        "ar": {
+          "@context": "https://schema.org",
+          "@type": "BreadcrumbList",
+          "itemListElement": [
+            {
+              "@type": "ListItem",
+              "position": 1,
+              "name": "الرئيسية",
+              "item": "https://claimtagx.com/ar/"
+            },
+            {
+              "@type": "ListItem",
+              "position": 2,
+              "name": "الحلول",
+              "item": "https://claimtagx.com/ar/#industries"
+            },
+            {
+              "@type": "ListItem",
+              "position": 3,
+              "name": "المطاعم والنوادي",
+              "item": "https://claimtagx.com/ar/solutions/clubs-restaurants"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "path": "/solutions/beach-clubs",
+      "index": true,
+      "priority": "0.9",
+      "en": {
+        "title": "Beach Club Custody Software — Valuables, Gear & Cabana Storage | ClaimTagX",
+        "description": "Digital custody tickets for beach and pool clubs — valuables at the towel desk, water-sports gear, cabana storage, valet. Photo proof, no app, works in the sun. Free plan."
+      },
+      "ar": {
+        "title": "برنامج حفظ نوادي الشاطئ — ClaimTagX",
+        "description": "تذاكر حفظ رقمية للمقتنيات والمعدات في نوادي الشاطئ والمسابح."
+      },
+      "jsonLd": {
+        "en": {
+          "@context": "https://schema.org",
+          "@type": "BreadcrumbList",
+          "itemListElement": [
+            {
+              "@type": "ListItem",
+              "position": 1,
+              "name": "Home",
+              "item": "https://claimtagx.com/"
+            },
+            {
+              "@type": "ListItem",
+              "position": 2,
+              "name": "Solutions",
+              "item": "https://claimtagx.com/#industries"
+            },
+            {
+              "@type": "ListItem",
+              "position": 3,
+              "name": "Beach Clubs",
+              "item": "https://claimtagx.com/solutions/beach-clubs"
+            }
+          ]
+        },
+        "ar": {
+          "@context": "https://schema.org",
+          "@type": "BreadcrumbList",
+          "itemListElement": [
+            {
+              "@type": "ListItem",
+              "position": 1,
+              "name": "الرئيسية",
+              "item": "https://claimtagx.com/ar/"
+            },
+            {
+              "@type": "ListItem",
+              "position": 2,
+              "name": "الحلول",
+              "item": "https://claimtagx.com/ar/#industries"
+            },
+            {
+              "@type": "ListItem",
+              "position": 3,
+              "name": "نوادي الشاطئ",
+              "item": "https://claimtagx.com/ar/solutions/beach-clubs"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "path": "/solutions/airlines",
+      "index": true,
+      "priority": "0.9",
+      "en": {
+        "title": "Airline Baggage Custody Software — Digital Bag Tags & Chain of Custody | ClaimTagX",
+        "description": "Digital custody records for gate-checked bags, transfers, and ground handling. Photo condition proof, timestamped handoffs, offline-first on the ramp. Enterprise-grade deployment."
+      },
+      "ar": {
+        "title": "برنامج حفظ أمتعة الطيران — ClaimTagX",
+        "description": "سجلات حفظ رقمية للأمتعة في البوابة والنقل الأرضي مع عمل offline."
+      },
+      "jsonLd": {
+        "en": {
+          "@context": "https://schema.org",
+          "@type": "BreadcrumbList",
+          "itemListElement": [
+            {
+              "@type": "ListItem",
+              "position": 1,
+              "name": "Home",
+              "item": "https://claimtagx.com/"
+            },
+            {
+              "@type": "ListItem",
+              "position": 2,
+              "name": "Solutions",
+              "item": "https://claimtagx.com/#industries"
+            },
+            {
+              "@type": "ListItem",
+              "position": 3,
+              "name": "Airlines & Ground Handling",
+              "item": "https://claimtagx.com/solutions/airlines"
+            }
+          ]
+        },
+        "ar": {
+          "@context": "https://schema.org",
+          "@type": "BreadcrumbList",
+          "itemListElement": [
+            {
+              "@type": "ListItem",
+              "position": 1,
+              "name": "الرئيسية",
+              "item": "https://claimtagx.com/ar/"
+            },
+            {
+              "@type": "ListItem",
+              "position": 2,
+              "name": "الحلول",
+              "item": "https://claimtagx.com/ar/#industries"
+            },
+            {
+              "@type": "ListItem",
+              "position": 3,
+              "name": "الطيران والخدمات الأرضية",
+              "item": "https://claimtagx.com/ar/solutions/airlines"
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "solutions": [
+    "valet",
+    "dry-cleaning",
+    "luggage",
+    "repair",
+    "hotels",
+    "clubs-restaurants",
+    "beach-clubs",
+    "airlines"
+  ]
+}

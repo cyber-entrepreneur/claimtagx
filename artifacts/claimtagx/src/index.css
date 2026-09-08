@@ -63,6 +63,9 @@
   --color-lime-border: rgba(198, 242, 78, 0.20);
   --color-steel: #1F2937;
   --color-slate: #64748B;
+  --color-ink: #D5DCE6;
+  --color-ink-muted: #C5CED9;
+  --color-on-lime: #0B0F19;
   --color-fog: #F1F5F9;
   --color-paper: #FFFFFF;
 
@@ -108,7 +111,7 @@
   --secondary-foreground: 0 0% 100%;
 
   --muted: 215 28% 17%;
-  --muted-foreground: 215 16% 47%; /* Slate */
+  --muted-foreground: 215 16% 47%; /* Brand slate #64748B; not body text on dark */
 
   --accent: 215 28% 17%;
   --accent-foreground: 0 0% 100%;
@@ -160,7 +163,7 @@
   --secondary-foreground: 0 0% 100%;
 
   --muted: 215 28% 17%;
-  --muted-foreground: 215 16% 47%; /* Slate */
+  --muted-foreground: 215 16% 47%; /* Brand slate #64748B; not body text on dark */
 
   --accent: 215 28% 17%;
   --accent-foreground: 0 0% 100%;
@@ -204,12 +207,19 @@
   }
 
   .text-shimmer {
-    background: linear-gradient(to right, #C6F24E 20%, #ffffff 50%, #C6F24E 80%);
-    background-size: 200% auto;
-    color: transparent;
-    -webkit-background-clip: text;
-    background-clip: text;
-    animation: shimmer 3s linear infinite;
+    color: #C6F24E;
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    html:not([data-e2e-stable]) .text-shimmer {
+      background: linear-gradient(to right, #C6F24E 20%, #ffffff 50%, #C6F24E 80%);
+      background-size: 200% auto;
+      color: transparent;
+      -webkit-background-clip: text;
+      background-clip: text;
+      -webkit-text-fill-color: transparent;
+      animation: shimmer 3s linear infinite;
+    }
   }
 }
 
@@ -250,5 +260,131 @@
 
 .animate-pulse-glow {
   animation: pulse-glow 2s infinite;
+}
+
+[dir="rtl"] .text-start {
+  text-align: right;
+}
+
+[dir="rtl"] .ms-auto {
+  margin-inline-start: auto;
+}
+
+[dir="rtl"] .me-auto {
+  margin-inline-end: auto;
+}
+
+[dir="rtl"] input,
+[dir="rtl"] textarea,
+[dir="rtl"] select {
+  text-align: start;
+}
+
+[dir="rtl"] .list-disc {
+  padding-inline-start: 1.25rem;
+  padding-inline-end: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  .text-shimmer {
+    animation: none !important;
+    color: #C6F24E !important;
+    background: none !important;
+    -webkit-text-fill-color: #C6F24E !important;
+  }
+  .animate-pulse-glow,
+  .animate-float,
+  .animate-marquee {
+    animation: none !important;
+  }
+}
+
+html[data-e2e-stable] *,
+html[data-e2e-stable] *::before,
+html[data-e2e-stable] *::after {
+  animation: none !important;
+  transition: none !important;
+}
+
+html[data-e2e-stable] .text-shimmer {
+  color: #C6F24E !important;
+  background: none !important;
+  -webkit-text-fill-color: #C6F24E !important;
+}
+
+/* Public CTAs: solid colors in hover/focus/active/disabled (no opacity wash).
+   :visited and -webkit-text-fill-color must stay obsidian-on-lime; body text-paper
+   plus visited-link styling otherwise paints white-on-lime (~1.3:1). */
+.cta-lime,
+a.cta-lime,
+a.cta-lime:link,
+a.cta-lime:visited,
+a.cta-lime:hover,
+a.cta-lime:active,
+a.cta-lime:visited:hover,
+a[href^="mailto:"].cta-lime,
+a[href^="mailto:"].cta-lime:link,
+a[href^="mailto:"].cta-lime:visited,
+a[href^="mailto:"].cta-lime:hover,
+a[href^="mailto:"].cta-lime:active,
+button.cta-lime {
+  background-color: #C6F24E !important;
+  color: #0B0F19 !important;
+  -webkit-text-fill-color: #0B0F19 !important;
+  forced-color-adjust: none;
+}
+html[data-e2e-stable] .cta-lime:hover {
+  box-shadow: none;
+  transform: none;
+}
+a.cta-lime:hover,
+a.cta-lime:active,
+button.cta-lime:hover,
+button.cta-lime:active {
+  background-color: #D4FF5E !important;
+  color: #0B0F19 !important;
+  -webkit-text-fill-color: #0B0F19 !important;
+  box-shadow: 0 0 30px rgba(198, 242, 78, 0.4);
+}
+.cta-lime:focus-visible {
+  outline: 2px solid #ffffff;
+  outline-offset: 2px;
+}
+.cta-lime:disabled,
+.cta-lime[aria-disabled="true"] {
+  background-color: #1F2937;
+  color: #D5DCE6 !important;
+  -webkit-text-fill-color: #D5DCE6 !important;
+  cursor: not-allowed;
+}
+.cta-steel,
+a.cta-steel,
+a.cta-steel:link,
+a.cta-steel:visited,
+a.cta-steel:hover,
+a.cta-steel:active,
+button.cta-steel {
+  background-color: #0B0F19 !important;
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+}
+a.cta-steel:hover,
+a.cta-steel:active,
+button.cta-steel:hover,
+button.cta-steel:active {
+  background-color: #0B0F19 !important;
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+  border-color: #C6F24E;
+}
+.cta-steel:focus-visible {
+  outline: 2px solid #C6F24E;
+  outline-offset: 2px;
+}
+.cta-steel:visited {
+  color: #ffffff;
 }
 

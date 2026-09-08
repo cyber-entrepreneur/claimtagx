@@ -1,0 +1,10 @@
+{
+  "status": "BLOCKED",
+  "reason": "Legal body copy is English-only pending qualified human legal/translation review. Arabic routes must not be indexed or advertised via hreflang as equivalent translations. Do not machine-translate legally binding copy.",
+  "paths": ["/privacy", "/terms", "/refund", "/cookies", "/gdpr", "/dpa", "/aup"],
+  "englishIndexable": true,
+  "arabicIndexable": false,
+  "arabicHreflang": false,
+  "arabicCanonicalLocale": "en",
+  "arabicRobots": "noindex, nofollow"
+}
