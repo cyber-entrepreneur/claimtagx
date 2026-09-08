@@ -1,10 +1,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { scoreInquiry, isImmediatelyQualified, type QualificationModelDef } from "./qualification";
-import { renderTemplate } from "./templates";
-import { matchAllConditions } from "./conditions";
-import { heuristicClassify } from "./ai";
-import { isSeniorJobTitle, buildFacts } from "./facts";
+import { scoreInquiry, isImmediatelyQualified, type QualificationModelDef } from "./qualification.ts";
+import { renderTemplate } from "./templates.ts";
+import { matchAllConditions } from "./conditions.ts";
+import { heuristicClassify } from "./ai.ts";
+import { isSeniorJobTitle, buildFacts } from "./facts.ts";
 
 const model: QualificationModelDef = {
   key: "enterprise",

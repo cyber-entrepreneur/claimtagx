@@ -15,7 +15,7 @@ catalog:
   '@types/node': ^25.3.3
   '@types/react': ^19.2.0
   '@types/react-dom': ^19.2.0
-  '@vitejs/plugin-react': ^5.0.4
+  '@vitejs/plugin-react': 5.1.4
   class-variance-authority: ^0.7.1
   clsx: ^2.1.1
   drizzle-orm: ^0.45.1
@@ -63,6 +63,7 @@ overrides:
   '@tailwindcss/oxide>@tailwindcss/oxide-linux-x64-musl': '-'
   '@tailwindcss/oxide>@tailwindcss/oxide-win32-arm64-msvc': '-'
   esbuild: 0.27.3
+  '@clerk/shared': 4.30.2
   esbuild>@esbuild/aix-ppc64: '-'
   esbuild>@esbuild/android-arm: '-'
   esbuild>@esbuild/android-arm64: '-'
