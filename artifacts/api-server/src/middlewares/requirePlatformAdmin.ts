@@ -1,10 +1,13 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import type { NextFunction, Request, Response } from "express";
 import { clerkClient, getAuth } from "@clerk/express";
-import { db, crmStaffTable, crmTeamsTable, crmTeamMembersTable, type CrmStaff } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { db, crmStaffTable, crmTeamsTable, crmTeamMembersTable, crmStaffInvitesTable, crmSessionRevocationsTable, type CrmStaff } from "@workspace/db";
+import { and, eq, isNull, gt } from "drizzle-orm";
 import { ROLE_PERMISSIONS, hasPermission, type PlatformPermission } from "../lib/crm/rbac";
+import { writeAudit } from "../lib/crm/audit";
 import { logger } from "../lib/logger";
+import { isCrmHttpTestAuthAllowed } from "../lib/crm/authFlags";
+import { isCredentialedOriginAllowed } from "../lib/crm/corsOrigin";
 
 const COOKIE = "ctx_platform_session";
 
@@ -13,6 +16,7 @@ declare global {
   namespace Express {
     interface Request {
       platformStaff?: CrmStaff;
+      rawBody?: string;
     }
   }
 }
@@ -20,15 +24,25 @@ declare global {
 interface SessionPayload {
   staffId: string;
   email: string;
+  iat: number;
   exp: number;
 }
 
+function sessionSecrets(): string[] {
+  const current = process.env.PLATFORM_STAFF_SESSION_SECRET?.trim();
+  const previous = process.env.PLATFORM_STAFF_SESSION_SECRET_PREVIOUS?.trim();
+  const out: string[] = [];
+  if (current) out.push(current);
+  if (previous && previous !== current) out.push(previous);
+  if (!out.length && process.env.NODE_ENV !== "production") {
+    const fallback = process.env.PLATFORM_STAFF_ACCESS_KEY?.trim();
+    if (fallback) out.push(fallback);
+  }
+  return out;
+}
+
 function sessionSecret(): string | null {
-  return (
-    process.env.PLATFORM_STAFF_SESSION_SECRET?.trim() ||
-    process.env.PLATFORM_STAFF_ACCESS_KEY?.trim() ||
-    null
-  );
+  return sessionSecrets()[0] ?? null;
 }
 
 function signPayload(json: string, secret: string): string {
@@ -44,14 +58,19 @@ export function encodeStaffSession(payload: SessionPayload): string | null {
 }
 
 export function decodeStaffSession(token: string): SessionPayload | null {
-  const secret = sessionSecret();
-  if (!secret) return null;
   const [body, sig] = token.split(".");
   if (!body || !sig) return null;
-  const expected = signPayload(body, secret);
   const a = Buffer.from(sig);
-  const b = Buffer.from(expected);
-  if (a.length !== b.length || !timingSafeEqual(a, b)) return null;
+  let matched = false;
+  for (const secret of sessionSecrets()) {
+    const expected = signPayload(body, secret);
+    const b = Buffer.from(expected);
+    if (a.length === b.length && timingSafeEqual(a, b)) {
+      matched = true;
+      break;
+    }
+  }
+  if (!matched) return null;
   try {
     const payload = JSON.parse(Buffer.from(body, "base64url").toString("utf8")) as SessionPayload;
     if (!payload.staffId || payload.exp < Date.now()) return null;
@@ -61,11 +80,34 @@ export function decodeStaffSession(token: string): SessionPayload | null {
   }
 }
 
+export async function revokeStaffSessions(staffId: string): Promise<void> {
+  await db
+    .insert(crmSessionRevocationsTable)
+    .values({ staffId, revokedBefore: new Date() })
+    .onConflictDoUpdate({
+      target: crmSessionRevocationsTable.staffId,
+      set: { revokedBefore: new Date() },
+    });
+}
+
+async function sessionIsRevoked(payload: SessionPayload): Promise<boolean> {
+  const [row] = await db
+    .select()
+    .from(crmSessionRevocationsTable)
+    .where(eq(crmSessionRevocationsTable.staffId, payload.staffId))
+    .limit(1);
+  if (!row) return false;
+  const issuedAt = typeof payload.iat === "number" ? payload.iat : 0;
+  return issuedAt <= row.revokedBefore.getTime();
+}
+
 export function setStaffSessionCookie(res: Response, staff: CrmStaff): void {
+  const now = Date.now();
   const token = encodeStaffSession({
     staffId: staff.id,
     email: staff.emailNormalized,
-    exp: Date.now() + 7 * 24 * 60 * 60 * 1000,
+    iat: now,
+    exp: now + 7 * 24 * 60 * 60 * 1000,
   });
   if (!token) return;
   res.cookie(COOKIE, token, {
@@ -121,14 +163,25 @@ export async function upsertStaffFromIdentity(params: {
   }
   const bootstrapOpen =
     allow.size === 0 && process.env.NODE_ENV !== "production";
-  if (allow.size > 0 && !allow.has(emailNormalized) && !bootstrapOpen) {
+  const [invite] = await db
+    .select()
+    .from(crmStaffInvitesTable)
+    .where(
+      and(
+        eq(crmStaffInvitesTable.emailNormalized, emailNormalized),
+        isNull(crmStaffInvitesTable.acceptedAt),
+        gt(crmStaffInvitesTable.expiresAt, new Date()),
+      ),
+    )
+    .limit(1);
+  if (allow.size > 0 && !allow.has(emailNormalized) && !invite && !bootstrapOpen) {
     return null;
   }
-  if (allow.size === 0 && process.env.NODE_ENV === "production") {
+  if (allow.size === 0 && process.env.NODE_ENV === "production" && !invite) {
     return null;
   }
   const [countRow] = await db.select({ id: crmStaffTable.id }).from(crmStaffTable).limit(1);
-  const role = countRow ? "sales" : "owner";
+  const role = invite?.role || (countRow ? "sales" : "owner");
   const [created] = await db
     .insert(crmStaffTable)
     .values({
@@ -151,6 +204,12 @@ export async function upsertStaffFromIdentity(params: {
       .insert(crmTeamMembersTable)
       .values({ teamId: team.id, staffId: created.id })
       .onConflictDoNothing();
+  }
+  if (invite) {
+    await db
+      .update(crmStaffInvitesTable)
+      .set({ acceptedAt: new Date() })
+      .where(eq(crmStaffInvitesTable.id, invite.id));
   }
   return created;
 }
@@ -192,20 +251,7 @@ function originAllowed(req: Request): boolean {
   const origin = req.headers.origin;
   if (!origin) return true;
   if (req.method === "GET" || req.method === "HEAD" || req.method === "OPTIONS") return true;
-  const list = process.env.CORS_ALLOWED_ORIGINS ?? "";
-  const allowed = new Set(
-    list
-      .split(",")
-      .map((s) => s.trim())
-      .filter(Boolean)
-      .map((v) => (v.startsWith("http") ? v : `https://${v}`)),
-  );
-  if (process.env.NODE_ENV !== "production") {
-    allowed.add("http://localhost:5173");
-    allowed.add("http://localhost:8080");
-    allowed.add("http://127.0.0.1:5173");
-  }
-  return allowed.has(origin);
+  return isCredentialedOriginAllowed(origin);
 }
 
 export async function requirePlatformAdmin(
@@ -218,20 +264,35 @@ export async function requirePlatformAdmin(
       res.status(403).json({ error: "Origin is not allowed" });
       return;
     }
-    let staff: CrmStaff | null = null;
-    const cookie = req.cookies?.[COOKIE] as string | undefined;
-    if (cookie) {
-      const session = decodeStaffSession(cookie);
-      if (session) {
-        const [row] = await db
-          .select()
-          .from(crmStaffTable)
-          .where(eq(crmStaffTable.id, session.staffId))
-          .limit(1);
-        if (row && row.status === "active") staff = row;
+    if (process.env.CRM_HTTP_TEST_AUTH === "true" && process.env.NODE_ENV === "production") {
+      throw new Error("CRM_HTTP_TEST_AUTH is forbidden in production");
+    }
+    if (isCrmHttpTestAuthAllowed() && process.env.NODE_ENV !== "production") {
+      const testId = req.headers["x-crm-test-staff-id"];
+      if (typeof testId === "string" && testId.length > 10) {
+        const [row] = await db.select().from(crmStaffTable).where(eq(crmStaffTable.id, testId)).limit(1);
+        if (row && row.status === "active") {
+          req.platformStaff = row;
+          next();
+          return;
+        }
       }
     }
-    if (!staff) staff = await staffFromClerk(req);
+    let staff: CrmStaff | null = await staffFromClerk(req);
+    if (!staff) {
+      const cookie = req.cookies?.[COOKIE] as string | undefined;
+      if (cookie) {
+        const session = decodeStaffSession(cookie);
+        if (session && !(await sessionIsRevoked(session))) {
+          const [row] = await db
+            .select()
+            .from(crmStaffTable)
+            .where(eq(crmStaffTable.id, session.staffId))
+            .limit(1);
+          if (row && row.status === "active") staff = row;
+        }
+      }
+    }
     if (!staff) {
       res.status(401).json({ error: "Unauthorized" });
       return;
@@ -251,7 +312,19 @@ export function requirePermission(permission: PlatformPermission) {
       res.status(401).json({ error: "Unauthorized" });
       return;
     }
-    if (!hasPermission(staff.permissions, permission)) {
+    const granted =
+      staff.permissions && staff.permissions.length > 0
+        ? staff.permissions
+        : (ROLE_PERMISSIONS[staff.role] ?? []);
+    if (!hasPermission(granted, permission)) {
+      void writeAudit({
+        actorType: "staff",
+        actorId: staff.id,
+        action: "auth.permission_denied",
+        entityType: "permission",
+        entityId: permission,
+        afterValue: { path: req.path, method: req.method, role: staff.role },
+      }).catch(() => undefined);
       res.status(403).json({ error: "Insufficient permission" });
       return;
     }
