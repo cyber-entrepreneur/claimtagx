@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { motion, useInView } from 'framer-motion';
+import { useI18n } from '@/lib/i18n';
 
 function Counter({ from, to, duration = 2, suffix = '' }: { from: number; to: number; duration?: number; suffix?: string }) {
   const nodeRef = useRef<HTMLSpanElement>(null);
@@ -34,10 +35,12 @@ function Counter({ from, to, duration = 2, suffix = '' }: { from: number; to: nu
 }
 
 export default function Stats() {
+  const { t } = useI18n();
+
   return (
     <section className="py-20 bg-steel relative overflow-hidden border-y border-white/5">
       <div className="absolute inset-0 bg-grid-pattern opacity-30 pointer-events-none" />
-      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full h-px bg-gradient-to-r from-transparent via-lime/30 to-transparent" />
+      <div className="absolute top-0 start-1/2 -translate-x-1/2 w-full h-px bg-gradient-to-r from-transparent via-lime/30 to-transparent" />
       
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-8 md:gap-12">
@@ -51,7 +54,7 @@ export default function Stats() {
             <div className="text-4xl md:text-5xl font-extrabold text-white mb-2 font-mono">
               &lt;<Counter from={0} to={2} duration={2.5} suffix="s" />
             </div>
-            <div className="text-sm text-lime font-medium uppercase tracking-wider">To Issue a Ticket</div>
+            <div className="text-sm text-lime font-medium uppercase tracking-wider">{t('home.stats.issueTicket')}</div>
           </motion.div>
 
           <motion.div
@@ -64,7 +67,7 @@ export default function Stats() {
             <div className="text-4xl md:text-5xl font-extrabold text-white mb-2 font-mono">
               $<Counter from={100} to={0} duration={2} />
             </div>
-            <div className="text-sm text-lime font-medium uppercase tracking-wider">Hardware Required</div>
+            <div className="text-sm text-lime font-medium uppercase tracking-wider">{t('home.stats.hardware')}</div>
           </motion.div>
 
           <motion.div 
@@ -77,7 +80,7 @@ export default function Stats() {
             <div className="text-4xl md:text-5xl font-extrabold text-white mb-2 font-mono">
               <Counter from={0} to={60} duration={2.5} suffix="s" />
             </div>
-            <div className="text-sm text-lime font-medium uppercase tracking-wider">Average Setup Time</div>
+            <div className="text-sm text-lime font-medium uppercase tracking-wider">{t('home.stats.setup')}</div>
           </motion.div>
 
           <motion.div 
@@ -90,7 +93,7 @@ export default function Stats() {
             <div className="text-4xl md:text-5xl font-extrabold text-white mb-2 font-mono">
               <Counter from={90} to={99} duration={2} suffix=".9%" />
             </div>
-            <div className="text-sm text-lime font-medium uppercase tracking-wider">Platform Uptime</div>
+            <div className="text-sm text-lime font-medium uppercase tracking-wider">{t('home.stats.uptime')}</div>
           </motion.div>
 
         </div>

@@ -15,13 +15,16 @@ import FAQ from '@/components/sections/FAQ';
 import FinalCTA from '@/components/sections/FinalCTA';
 import StickyCTA from '@/components/StickyCTA';
 import ContactFab from '@/components/ContactFab';
+import { useI18n } from '@/lib/i18n';
 
 export default function Home() {
+  const { t } = useI18n();
   return (
     <>
       <SEO
-        title="ClaimTagX — Digital Claim Tickets for Valet, Laundry, Luggage & Repair"
-        description="Replace paper claim tickets with secure digital tags. Photo intake, QR claim & release, full audit trail. No hardware, no patron app. Free plan — live in 60 seconds."
+        title={t('home.seo.title')}
+        description={t('home.seo.description')}
+        path="/"
       />
       <div className="bg-obsidian w-full relative overflow-hidden">
         {/* Subtle global noise/texture */}
@@ -41,7 +44,6 @@ export default function Home() {
         <PricingTeaser />
         <FAQ />
         <FinalCTA />
-
         <StickyCTA />
         <ContactFab />
       </div>

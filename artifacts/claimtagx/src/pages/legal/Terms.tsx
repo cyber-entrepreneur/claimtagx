@@ -1,18 +1,24 @@
 import SEO from '@/components/SEO';
+import { useI18n } from '@/lib/i18n';
+import { legalPageSeo } from '@/lib/seo/legalLocalization';
 
+// Shell chrome is localized; legal body copy requires qualified human review before translation or publication as localized law.
 export default function Terms() {
+  const { t, locale } = useI18n();
   return (
     <>
       <SEO
-        title="Terms of Service | ClaimTagX"
-        description="Terms governing access to and use of the ClaimTagX platform."
+        {...legalPageSeo("/terms", locale === "ar" ? "ar" : "en", {
+          title: t("legal.terms.seoTitle"),
+          description: t("legal.terms.seoDescription"),
+        })}
       />
       <div className="pt-32 pb-20 max-w-[800px] mx-auto px-4 sm:px-6">
-        <h1 className="text-4xl font-bold text-white mb-2">Terms of Service</h1>
-        <p className="text-slate text-sm mb-2">Effective Date: April 20, 2026</p>
-        <p className="text-slate text-sm mb-10 pb-10 border-b border-white/10">Last Updated: April 17, 2026</p>
+        <h1 className="text-4xl font-bold text-white mb-2">{t('legal.terms.title')}</h1>
+        <p className="text-ink text-sm mb-2">{t('legal.effectiveDate', { date: 'April 20, 2026' })}</p>
+        <p className="text-ink text-sm mb-10 pb-10 border-b border-white/10">{t('legal.lastUpdated', { date: 'April 17, 2026' })}</p>
 
-        <div className="prose prose-invert prose-slate max-w-none text-slate-300 space-y-4 leading-relaxed">
+        <div className="prose prose-invert prose-slate max-w-none text-ink-300 space-y-4 leading-relaxed">
           <h2 className="text-2xl font-bold text-white mt-10 mb-4">1. Acceptance of Terms</h2>
           <p>These Terms of Service ("Terms") govern access to and use of ClaimTagX ("Platform"), a digital custody management platform operated by Ali Achkar ("ClaimTagX," "we," "our"). This notice will be updated upon formal incorporation.</p>
           <p>By creating an account, accessing, or using the Platform, you agree to be bound by these Terms. If you do not agree, do not use the Platform.</p>
@@ -151,8 +157,8 @@ export default function Terms() {
             <li><strong className="text-white">Mailing address:</strong> [To be updated upon incorporation]</li>
           </ul>
 
-          <p className="text-slate text-sm italic mt-10 pt-10 border-t border-white/10">ClaimTagX is operated by Ali Achkar (sole proprietor). This notice will be updated upon formal incorporation.</p>
-          <p className="text-slate text-sm italic">© 2026 ClaimTagX. All rights reserved.</p>
+          <p className="text-ink text-sm italic mt-10 pt-10 border-t border-white/10">ClaimTagX is operated by Ali Achkar (sole proprietor). This notice will be updated upon formal incorporation.</p>
+          <p className="text-ink text-sm italic">© 2026 ClaimTagX. All rights reserved.</p>
         </div>
       </div>
     </>

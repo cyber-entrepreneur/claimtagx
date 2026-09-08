@@ -112,7 +112,8 @@ export default function NodeNetworkBg({
     seedNodes();
 
     const prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    if (prefersReduced) {
+    const e2eStable = document.documentElement.dataset.e2eStable === '1';
+    if (prefersReduced || e2eStable) {
       draw();
       return;
     }
@@ -144,10 +145,23 @@ export default function NodeNetworkBg({
 
   // `block w-full h-full` forces the canvas to actually fill its parent —
   // otherwise the intrinsic 300×150 default sticks even with absolute inset-0.
+  //
+  // The mask fades the network at top and bottom so the lime dots and links
+  // dissolve into the obsidian instead of slamming into the section boundary
+  // (which produced a phosphor-band artifact at the hero/next-section seam).
   return (
     <canvas
       ref={canvasRef}
       className={`block w-full h-full ${className}`}
+      style={{
+        // Fade the network well before the section edges so no lime dots or
+        // link lines render in the last quarter of the hero — that's what
+        // produced the phosphor band at the section seam.
+        maskImage:
+          'linear-gradient(to bottom, transparent 0%, black 30%, black 65%, transparent 95%)',
+        WebkitMaskImage:
+          'linear-gradient(to bottom, transparent 0%, black 30%, black 65%, transparent 95%)',
+      }}
       aria-hidden="true"
     />
   );

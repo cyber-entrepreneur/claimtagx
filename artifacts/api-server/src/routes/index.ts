@@ -1,5 +1,6 @@
 import { Router, type IRouter } from "express";
 import healthRouter from "./health";
+import platformHealthRouter from "./platformHealth";
 import assetsRouter from "./assets";
 import meRouter from "./me";
 import invitationsRouter from "./invitations";
@@ -10,10 +11,16 @@ import intercomRouter from "./intercom";
 import marketingRouter from "./marketing";
 import contactRouter from "./contact";
 import platformContactRouter from "./platformContact";
+import platformChannelsRouter from "./platformChannels";
+import platformGovernanceRouter from "./platformGovernance";
+import platformConfigChangesRouter from "./platformConfigChanges";
+import platformEffectsRouter from "./platformEffects";
+import platformMarketingRouter from "./platformMarketing";
 
 const router: IRouter = Router();
 
 router.use(healthRouter);
+router.use(platformHealthRouter);
 router.use(meRouter);
 router.use(invitationsRouter);
 router.use(shiftsRouter);
@@ -24,5 +31,10 @@ router.use(assetsRouter);
 router.use(marketingRouter);
 router.use(contactRouter);
 router.use(platformContactRouter);
+router.use(platformChannelsRouter);
+router.use(platformGovernanceRouter);
+router.use(platformConfigChangesRouter);
+router.use(platformEffectsRouter);
+router.use(platformMarketingRouter);
 
 export default router;

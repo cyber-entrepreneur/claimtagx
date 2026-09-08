@@ -10,7 +10,10 @@ export interface HeuristicClassification {
 
 export function heuristicClassify(text: string): HeuristicClassification {
   const t = text.toLowerCase();
-  const enterprise = /(enterprise|airport|hotel group|chain|100\+|nationwide|global)/.test(t);
+  const enterprise =
+    /(enterprise|airport|hotel group|hotels?|chain|100\+|nationwide|global|\d+\s+(locations?|sites?|hotels?|venues?))/i.test(
+      t,
+    );
   const urgent = /(immediately|asap|this month|urgent|go live)/.test(t);
   const competitor = /(disputes?|lost keys?|paper ticket|incadea|oracle|opera)/.test(t);
   return {

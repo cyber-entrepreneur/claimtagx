@@ -337,10 +337,11 @@ async function replayMissed(
   for (const row of rows) {
     if (row.type === "intake" || row.type === "release") {
       if (!row.assetId) continue;
+      const handlerId = row.handlerId;
       const [assetRow] = await db
         .select({ asset: assetsTable, releasedBy: handlersTable.name })
         .from(assetsTable)
-        .leftJoin(handlersTable, eq(handlersTable.id, row.handlerId))
+        .leftJoin(handlersTable, handlerId ? eq(handlersTable.id, handlerId) : sql`false`)
         .where(eq(assetsTable.id, row.assetId))
         .limit(1);
       if (!assetRow) continue;

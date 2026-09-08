@@ -1,17 +1,23 @@
 import SEO from '@/components/SEO';
+import { useI18n } from '@/lib/i18n';
+import { legalPageSeo } from '@/lib/seo/legalLocalization';
 
+// Shell chrome is localized; legal body copy requires qualified human review before translation or publication as localized law.
 export default function Cookies() {
+  const { t, locale } = useI18n();
   return (
     <>
-      <SEO 
-        title="Cookie Policy | ClaimTagX"
-        description="Cookie Policy for ClaimTagX."
+      <SEO
+        {...legalPageSeo("/cookies", locale === "ar" ? "ar" : "en", {
+          title: t("legal.cookies.seoTitle"),
+          description: t("legal.cookies.seoDescription"),
+        })}
       />
       <div className="pt-32 pb-20 max-w-[800px] mx-auto px-4 sm:px-6">
-        <h1 className="text-4xl font-bold text-white mb-2">Cookie Policy</h1>
-        <p className="text-slate text-sm mb-10 pb-10 border-b border-white/10">Last updated: April 17, 2026</p>
-        
-        <div className="prose prose-invert prose-slate max-w-none text-slate-300">
+        <h1 className="text-4xl font-bold text-white mb-2">{t('legal.cookies.title')}</h1>
+        <p className="text-ink text-sm mb-10 pb-10 border-b border-white/10">{t('legal.lastUpdatedLower', { date: 'April 17, 2026' })}</p>
+
+        <div className="prose prose-invert prose-slate max-w-none text-ink-300">
           <p>This Cookie Policy explains how ClaimTagX uses cookies and similar technologies to recognize you when you visit our website and use our platform.</p>
           
           <h2 className="text-2xl font-bold text-white mt-8 mb-4">1. What are cookies?</h2>

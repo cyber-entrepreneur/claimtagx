@@ -1,19 +1,22 @@
-import { db, crmAuditEventsTable, type JsonMap } from "@workspace/db";
+import { db, crmAuditEventsTable, type DbSession, type JsonMap } from "@workspace/db";
 
-export async function writeAudit(params: {
-  actorType: string;
-  actorId?: string | null;
-  action: string;
-  entityType: string;
-  entityId: string;
-  inquiryId?: string | null;
-  contactId?: string | null;
-  beforeValue?: JsonMap | null;
-  afterValue?: JsonMap | null;
-  workflowId?: string | null;
-  correlationId?: string | null;
-}): Promise<void> {
-  await db.insert(crmAuditEventsTable).values({
+export async function writeAudit(
+  params: {
+    actorType: string;
+    actorId?: string | null;
+    action: string;
+    entityType: string;
+    entityId: string;
+    inquiryId?: string | null;
+    contactId?: string | null;
+    beforeValue?: JsonMap | null;
+    afterValue?: JsonMap | null;
+    workflowId?: string | null;
+    correlationId?: string | null;
+  },
+  executor: DbSession = db,
+): Promise<void> {
+  await executor.insert(crmAuditEventsTable).values({
     actorType: params.actorType,
     actorId: params.actorId ?? null,
     action: params.action,

@@ -1,17 +1,23 @@
 import SEO from '@/components/SEO';
+import { useI18n } from '@/lib/i18n';
+import { legalPageSeo } from '@/lib/seo/legalLocalization';
 
+// Shell chrome is localized; legal body copy requires qualified human review before translation or publication as localized law.
 export default function DPA() {
+  const { t, locale } = useI18n();
   return (
     <>
-      <SEO 
-        title="Data Processing Addendum | ClaimTagX"
-        description="Data Processing Addendum for ClaimTagX."
+      <SEO
+        {...legalPageSeo("/dpa", locale === "ar" ? "ar" : "en", {
+          title: t("legal.dpa.seoTitle"),
+          description: t("legal.dpa.seoDescription"),
+        })}
       />
       <div className="pt-32 pb-20 max-w-[800px] mx-auto px-4 sm:px-6">
-        <h1 className="text-4xl font-bold text-white mb-2">Data Processing Addendum</h1>
-        <p className="text-slate text-sm mb-10 pb-10 border-b border-white/10">Last updated: April 17, 2026</p>
-        
-        <div className="prose prose-invert prose-slate max-w-none text-slate-300">
+        <h1 className="text-4xl font-bold text-white mb-2">{t('legal.dpa.title')}</h1>
+        <p className="text-ink text-sm mb-10 pb-10 border-b border-white/10">{t('legal.lastUpdatedLower', { date: 'April 17, 2026' })}</p>
+
+        <div className="prose prose-invert prose-slate max-w-none text-ink-300">
           <p>This Data Processing Addendum ("DPA") forms part of the Terms of Service between ClaimTagX ("Processor") and the Customer ("Controller").</p>
           
           <h2 className="text-2xl font-bold text-white mt-8 mb-4">1. Scope of Processing</h2>

@@ -6,47 +6,19 @@ import { clerkMiddleware } from "@clerk/express";
 import router from "./routes";
 import { logger } from "./lib/logger";
 import {
+  corsOriginDelegate,
+  isCredentialedOriginAllowed,
+} from "./lib/crm/corsOrigin";
+import {
   CLERK_PROXY_PATH,
   clerkProxyMiddleware,
 } from "./middlewares/clerkProxyMiddleware";
 
 const app: Express = express();
 
-// Build an explicit allowlist of origins permitted to send credentialed
-// requests. Reflecting arbitrary origins with `credentials: true` would let
-// any site ride the user's Clerk session cookie, so we hard-fail anything
-// not on this list. Localhost is allowed in development only.
-function buildAllowedOrigins(): Set<string> {
-  const list = new Set<string>();
-  const add = (raw: string | undefined) => {
-    if (!raw) return;
-    for (const part of raw.split(",")) {
-      const v = part.trim();
-      if (!v) continue;
-      list.add(v.startsWith("http") ? v : `https://${v}`);
-    }
-  };
-  add(process.env.REPLIT_DEV_DOMAIN);
-  add(process.env.REPLIT_DEPLOYMENT_DOMAIN);
-  add(process.env.CORS_ALLOWED_ORIGINS);
-  if (process.env.NODE_ENV !== "production") {
-    list.add("http://localhost:5173");
-    list.add("http://localhost:8080");
-    list.add("http://127.0.0.1:5173");
-    list.add("http://127.0.0.1:8080");
-  }
-  return list;
-}
-
-const allowedOrigins = buildAllowedOrigins();
 const corsOptions: CorsOptions = {
   credentials: true,
-  origin(origin, callback) {
-    // Same-origin / non-browser requests have no Origin header.
-    if (!origin) return callback(null, true);
-    if (allowedOrigins.has(origin)) return callback(null, true);
-    return callback(new Error(`CORS: origin ${origin} is not allowed`));
-  },
+  origin: corsOriginDelegate,
 };
 
 app.use(
@@ -71,12 +43,89 @@ app.use(
 
 app.use(CLERK_PROXY_PATH, clerkProxyMiddleware());
 
+app.use((req, res, next) => {
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+  res.setHeader("X-Frame-Options", "DENY");
+  res.setHeader(
+    "Content-Security-Policy",
+    "default-src 'none'; frame-ancestors 'none'; base-uri 'none'",
+  );
+  next();
+});
+
 app.use(cors(corsOptions));
 app.use(cookieParser());
-app.use(express.json({ limit: "256kb" }));
+app.use((req, res, next) => {
+  if (req.method === "POST" && req.path.includes("/webhooks/")) {
+    const len = Number(req.headers["content-length"] ?? 0);
+    if (Number.isFinite(len) && len > 64 * 1024) {
+      res.status(413).json({ error: "payload_too_large", live: false });
+      return;
+    }
+  }
+  next();
+});
+app.use(
+  express.json({
+    limit: "256kb",
+    verify(req, _res, buf) {
+      if (req.url?.includes("/webhooks/") && buf.length > 64 * 1024) {
+        throw Object.assign(new Error("payload_too_large"), { status: 413 });
+      }
+      (req as { rawBody?: string; rawBodyBytes?: Buffer }).rawBodyBytes = Buffer.from(buf);
+      (req as { rawBody?: string }).rawBody = buf.toString("utf8");
+    },
+  }),
+);
 app.use(express.urlencoded({ extended: true }));
 
-app.use(clerkMiddleware());
+const trustProxyHops = Number(process.env.TRUST_PROXY_HOPS ?? "");
+if (Number.isInteger(trustProxyHops) && trustProxyHops > 0) {
+  app.set("trust proxy", trustProxyHops);
+} else {
+  app.set("trust proxy", false);
+}
+
+app.use((req, res, next) => {
+  if (!["POST", "PUT", "PATCH", "DELETE"].includes(req.method)) {
+    next();
+    return;
+  }
+  if (!req.path.startsWith("/api/platform")) {
+    next();
+    return;
+  }
+  if (req.path === "/api/platform/auth/login") {
+    next();
+    return;
+  }
+  if (typeof req.headers.authorization === "string") {
+    const cookie = req.headers.cookie ?? "";
+    // Bearer-only requests may skip cookie CSRF; cookie sessions must still pass origin checks.
+    if (!cookie.includes("ctx_platform_session")) {
+      next();
+      return;
+    }
+  }
+  const origin = req.headers.origin;
+  const cookie = req.headers.cookie ?? "";
+  if (cookie.includes("ctx_platform_session")) {
+    if (!isCredentialedOriginAllowed(origin)) {
+      res.status(403).json({ error: "CSRF origin rejected" });
+      return;
+    }
+  }
+  next();
+});
+
+if (process.env.CLERK_PUBLISHABLE_KEY) {
+  app.use(clerkMiddleware());
+} else if (process.env.NODE_ENV === "production") {
+  throw new Error("CLERK_PUBLISHABLE_KEY is required in production");
+} else {
+  logger.warn("Clerk middleware disabled (no CLERK_PUBLISHABLE_KEY); development only");
+}
 
 app.use("/api", router);
 

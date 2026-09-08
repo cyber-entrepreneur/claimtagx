@@ -3,7 +3,8 @@
   "version": "0.0.0",
   "private": true,
   "scripts": {
-    "codegen": "orval --config ./orval.config.ts && pnpm -w run typecheck:libs"
+    "codegen": "node ./node_modules/orval/dist/bin/orval.mjs --config ./orval.config.mjs && pnpm -w run typecheck:libs",
+    "codegen:contact": "node ./node_modules/orval/dist/bin/orval.mjs --config ./orval.config.mjs --project contact-crm-client-react && node ./node_modules/orval/dist/bin/orval.mjs --config ./orval.config.mjs --project contact-crm-zod"
   },
   "devDependencies": {
     "orval": "^8.5.2"

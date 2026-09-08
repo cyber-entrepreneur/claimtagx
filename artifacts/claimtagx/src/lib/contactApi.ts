@@ -1,105 +1,112 @@
-const API_BASE = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.replace(/\/+$/, "") || "";
+import {
+  ApiError,
+  getContactBootstrap,
+  getGetContactBootstrapUrl,
+  getPlatformAuthLoginUrl,
+  getPlatformAuthLogoutUrl,
+  getGetPlatformMeUrl,
+  getPlatformMe,
+  getSubmitContactInquiryUrl,
+  platformAuthLogin,
+  platformAuthLogout,
+  setAuthTokenGetter,
+  setBaseUrl,
+  submitContactInquiry,
+  type ContactBootstrap,
+  type ContactCountry,
+  type ContactSubmitRequest,
+  type ContactSubmitResponse,
+  type CrmTaxonomyItem,
+  type PlatformStaffSession,
+} from "@workspace/api-client-react";
+export {
+  isNetworkUncertainSubmitError,
+  mapContactSubmitError,
+  type ContactSubmitError,
+} from "./contactSubmitErrors";
+
+const API_BASE = (import.meta.env.VITE_API_URL as string | undefined) ?? "";
+if (API_BASE) setBaseUrl(API_BASE);
+
+/** @deprecated Prefer generated `CrmTaxonomyItem`. */
+export type TaxonomyItem = CrmTaxonomyItem;
+/** @deprecated Prefer generated `ContactCountry`. */
+export type CountryOption = ContactCountry;
+export type { ContactBootstrap };
+export type SubmitResult = ContactSubmitResponse;
+
+let platformTokenGetter: (() => Promise<string | null>) | null = null;
+
+/**
+ * Wire Clerk `getToken` into the generated-client mutator (`customFetch`)
+ * and the path-based Admin helper below.
+ */
+export function setPlatformAuthTokenGetter(getter: (() => Promise<string | null>) | null): void {
+  platformTokenGetter = getter;
+  setAuthTokenGetter(getter);
+}
 
 export function apiUrl(path: string): string {
   if (!path.startsWith("/")) return `${API_BASE}/${path}`;
   return `${API_BASE}${path}`;
 }
 
-export interface TaxonomyItem {
-  id: string;
-  kind: string;
-  key: string;
-  parentKey: string;
-  label: string;
-  sortOrder: number;
-  active: boolean;
-}
-
-export interface CountryOption {
-  code: string;
-  name: string;
-  callingCode: string;
-}
-
-export interface ContactBootstrap {
-  countries: CountryOption[];
-  detectedCountry: string | null;
-  countryDetectionSource: string;
-  termsVersion: string;
-  privacyPolicyVersion: string;
-  messageMaxLength: number;
-  taxonomy: TaxonomyItem[];
-}
-
-export interface SubmitResult {
-  reference: string;
-  qualified: boolean;
-  meetingUrl: string | null;
-  firstName: string;
-  correlationId?: string;
-  error?: string;
-}
-
-async function parseJson<T>(res: Response): Promise<T> {
-  const text = await res.text();
-  if (!text) return {} as T;
-  return JSON.parse(text) as T;
-}
-
 export async function fetchBootstrap(): Promise<ContactBootstrap | null> {
   try {
-    const res = await fetch(apiUrl("/api/contact/bootstrap"), { credentials: "omit" });
-    if (!res.ok) return null;
-    const data = await parseJson<ContactBootstrap>(res);
-    if (!data || typeof data !== "object") return null;
-    return data;
+    return await getContactBootstrap({ credentials: "omit" });
   } catch {
     return null;
   }
 }
 
-export async function submitInquiry(body: unknown): Promise<SubmitResult> {
-  const res = await fetch(apiUrl("/api/contact/inquiries"), {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    credentials: "omit",
-    body: JSON.stringify(body),
-  });
-  const data = await parseJson<SubmitResult & { error?: string }>(res);
-  if (!res.ok) {
-    throw Object.assign(new Error(data.error || "We couldn't submit your inquiry."), {
-      correlationId: data.correlationId,
-    });
+export async function submitInquiry(body: unknown): Promise<ContactSubmitResponse> {
+  try {
+    return await submitContactInquiry(body as ContactSubmitRequest, { credentials: "omit" });
+  } catch (err) {
+    if (err instanceof ApiError) {
+      const data = (err.data ?? {}) as { error?: string; correlationId?: string };
+      throw Object.assign(new Error(data.error || "We couldn't submit your inquiry."), {
+        status: err.status,
+        correlationId: data.correlationId,
+      });
+    }
+    throw err;
   }
-  return data;
 }
 
 export async function platformLogin(email: string, accessKey: string, name?: string) {
-  const res = await fetch(apiUrl("/api/platform/auth/login"), {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    credentials: "include",
-    body: JSON.stringify({ email, accessKey, name }),
-  });
-  const data = await parseJson<{ error?: string } & Record<string, unknown>>(res);
-  if (!res.ok) throw new Error(data.error || "Sign-in failed");
-  return data;
+  try {
+    return await platformAuthLogin({ email, accessKey, name });
+  } catch (err) {
+    if (err instanceof ApiError) {
+      const data = (err.data ?? {}) as { error?: string };
+      throw new Error(data.error || "Sign-in failed");
+    }
+    throw err;
+  }
 }
 
-export async function platformFetch<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(apiUrl(path), {
-    ...init,
-    credentials: "include",
-    headers: {
-      ...(init?.body ? { "Content-Type": "application/json" } : {}),
-      ...(init?.headers ?? {}),
-    },
-  });
-  if (res.status === 401) {
-    throw Object.assign(new Error("Unauthorized"), { status: 401 });
+/** Current platform staff session (generated `getPlatformMe`). */
+export async function fetchPlatformMe(init?: RequestInit): Promise<PlatformStaffSession> {
+  try {
+    return await getPlatformMe(init);
+  } catch (err) {
+    if (err instanceof ApiError && err.status === 401) {
+      throw Object.assign(new Error("Unauthorized"), { status: 401 });
+    }
+    throw err;
   }
-  if (res.status === 204) return undefined as T;
-  const data = await parseJson<T & { error?: string }>(res);
-  if (!res.ok) throw new Error((data as { error?: string }).error || `Request failed (${res.status})`);
-  return data;
 }
+
+/** Clear platform staff session cookie (generated `platformAuthLogout`). */
+export async function platformLogout(init?: RequestInit): Promise<void> {
+  await platformAuthLogout(init);
+}
+
+export const CONTACT_PATHS = {
+  bootstrap: getGetContactBootstrapUrl,
+  submit: getSubmitContactInquiryUrl,
+  platformLogin: getPlatformAuthLoginUrl,
+  platformLogout: getPlatformAuthLogoutUrl,
+  platformMe: getGetPlatformMeUrl,
+};
