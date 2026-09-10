@@ -9,17 +9,18 @@
     "start": "node --enable-source-maps ./dist/index.mjs",
     "start:worker": "node --enable-source-maps ./dist/worker.mjs",
     "typecheck": "node ../../node_modules/typescript/bin/tsc -p ../../lib/db/tsconfig.json && tsc -p tsconfig.json --noEmit",
-    "test": "tsx --test src/lib/crm/*.test.ts"
+    "gate:identity-provider": "node ../../scripts/no-hosted-idp-gate.mjs",
+    "test": "node ../../scripts/no-hosted-idp-gate.mjs && tsx --test src/lib/crm/*.test.ts src/lib/auth/*.test.ts"
   },
   "dependencies": {
-    "@clerk/express": "^2.1.5",
+    "@node-rs/argon2": "^2.0.2",
     "@workspace/api-zod": "workspace:*",
     "@workspace/db": "workspace:*",
+    "@workspace/first-party-auth": "workspace:*",
     "cookie-parser": "^1.4.7",
     "cors": "^2",
     "drizzle-orm": "catalog:",
     "express": "^5",
-    "http-proxy-middleware": "^3.0.5",
     "pino": "^9",
     "pino-http": "^10",
     "libphonenumber-js": "^1.12.15",

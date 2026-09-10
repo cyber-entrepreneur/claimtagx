@@ -15,8 +15,9 @@ const generatedSchemas = join(root, "lib", "api-client-react", "src", "contact-g
 
 function hashPair(): string {
   const h = createHash("sha256");
-  h.update(readFileSync(generatedApi));
-  h.update(readFileSync(generatedSchemas));
+  // Normalize CRLF so Windows/Unix regenerations compare equal.
+  h.update(readFileSync(generatedApi, "utf8").replace(/\r\n/g, "\n"));
+  h.update(readFileSync(generatedSchemas, "utf8").replace(/\r\n/g, "\n"));
   return h.digest("hex");
 }
 

@@ -2,17 +2,13 @@ import express, { type Express } from "express";
 import cookieParser from "cookie-parser";
 import cors, { type CorsOptions } from "cors";
 import pinoHttp from "pino-http";
-import { clerkMiddleware } from "@clerk/express";
 import router from "./routes";
 import { logger } from "./lib/logger";
 import {
   corsOriginDelegate,
   isCredentialedOriginAllowed,
 } from "./lib/crm/corsOrigin";
-import {
-  CLERK_PROXY_PATH,
-  clerkProxyMiddleware,
-} from "./middlewares/clerkProxyMiddleware";
+import { AUTH_SESSION_COOKIE } from "./lib/auth/composeAuthPlatform";
 
 const app: Express = express();
 
@@ -40,8 +36,6 @@ app.use(
     },
   }),
 );
-
-app.use(CLERK_PROXY_PATH, clerkProxyMiddleware());
 
 app.use((req, res, next) => {
   res.setHeader("X-Content-Type-Options", "nosniff");
@@ -87,6 +81,23 @@ if (Number.isInteger(trustProxyHops) && trustProxyHops > 0) {
   app.set("trust proxy", false);
 }
 
+// Pre-session (public) first-party auth endpoints: these establish or reset an
+// identity and legitimately arrive without an existing session cookie, so they
+// are exempt from the cookie-CSRF origin check below. Authenticated auth
+// endpoints (logout, logout-all, change-password, mfa/enroll, mfa/confirm,
+// mfa/recovery-codes, sessions) are NOT exempt — they carry the session cookie and
+// must pass the origin check.
+const CSRF_EXEMPT_AUTH_PATHS = new Set([
+  "/api/platform/auth/login",
+  "/api/platform/auth/mfa/challenge",
+  "/api/platform/auth/forgot-password",
+  "/api/platform/auth/reset-password",
+  "/api/platform/auth/verify-email",
+  "/api/platform/auth/invite/accept",
+  "/api/platform/auth/bootstrap",
+  "/api/platform/auth/test-login",
+]);
+
 app.use((req, res, next) => {
   if (!["POST", "PUT", "PATCH", "DELETE"].includes(req.method)) {
     next();
@@ -96,21 +107,21 @@ app.use((req, res, next) => {
     next();
     return;
   }
-  if (req.path === "/api/platform/auth/login") {
+  if (CSRF_EXEMPT_AUTH_PATHS.has(req.path)) {
     next();
     return;
   }
+  const cookie = req.headers.cookie ?? "";
+  const hasSessionCookie = cookie.includes(AUTH_SESSION_COOKIE);
   if (typeof req.headers.authorization === "string") {
-    const cookie = req.headers.cookie ?? "";
     // Bearer-only requests may skip cookie CSRF; cookie sessions must still pass origin checks.
-    if (!cookie.includes("ctx_platform_session")) {
+    if (!hasSessionCookie) {
       next();
       return;
     }
   }
   const origin = req.headers.origin;
-  const cookie = req.headers.cookie ?? "";
-  if (cookie.includes("ctx_platform_session")) {
+  if (hasSessionCookie) {
     if (!isCredentialedOriginAllowed(origin)) {
       res.status(403).json({ error: "CSRF origin rejected" });
       return;
@@ -118,14 +129,6 @@ app.use((req, res, next) => {
   }
   next();
 });
-
-if (process.env.CLERK_PUBLISHABLE_KEY) {
-  app.use(clerkMiddleware());
-} else if (process.env.NODE_ENV === "production") {
-  throw new Error("CLERK_PUBLISHABLE_KEY is required in production");
-} else {
-  logger.warn("Clerk middleware disabled (no CLERK_PUBLISHABLE_KEY); development only");
-}
 
 app.use("/api", router);
 

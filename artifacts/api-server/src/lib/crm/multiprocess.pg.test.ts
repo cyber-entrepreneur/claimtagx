@@ -11,13 +11,19 @@ function requireIsolatedDb() {
   }
 }
 
+const here = dirname(fileURLToPath(import.meta.url));
+
 describe("multi-process CRM workers", () => {
   it("enforces claim exclusivity across two Node worker processes", async () => {
     requireIsolatedDb();
-    const root = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..", "..");
-    const script = join(root, "tmp", "claimtagx-crm-verify", "dual-worker.mjs");
+    // Repo-owned harness next to this test — never a gitignored tmp path.
+    const harness = join(here, "dualWorkerHarness.ts");
+    const cwd = join(here, "..", "..", "..");
     const result = await new Promise<{ code: number | null; out: string }>((resolve) => {
-      const child = spawn(process.execPath, [script], { env: process.env, cwd: root });
+      const child = spawn(process.execPath, ["--import", "tsx", harness], {
+        env: process.env,
+        cwd,
+      });
       let out = "";
       child.stdout.on("data", (d) => {
         out += String(d);

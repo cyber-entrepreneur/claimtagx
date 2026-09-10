@@ -1,10 +1,10 @@
 import { Router, type IRouter } from "express";
 import { z } from "zod";
-import { clerkClient } from "@clerk/express";
 import {
   requireAuth,
   requireVenueRole,
 } from "../middlewares/requireAuth";
+import { getAuthService } from "../lib/auth/composeAuthPlatform";
 import {
   acceptInvitation,
   createInvitation,
@@ -33,16 +33,10 @@ interface InviterIdentity {
 
 async function lookupInviter(userId: string): Promise<InviterIdentity> {
   try {
-    const user = await clerkClient.users.getUser(userId);
-    const email =
-      user.primaryEmailAddress?.emailAddress ??
-      user.emailAddresses[0]?.emailAddress ??
-      "";
-    const name =
-      [user.firstName, user.lastName].filter(Boolean).join(" ").trim() ||
-      user.username ||
-      email.split("@")[0] ||
-      "";
+    // First-party identity: resolve the inviter's verified email from their auth
+    // account (userId is now a first-party account id, not a third-party IdP id).
+    const email = (await getAuthService().getAccountEmail(userId)) ?? "";
+    const name = email ? email.split("@")[0] : "";
     return { name, email };
   } catch {
     return { name: "", email: "" };
@@ -308,21 +302,14 @@ router.get(
     try {
       const code = String(req.params.venueCode).toUpperCase();
       const members = await listVenueMembers(code);
-      // Enrich with display info from Clerk so the owner can identify the
-      // person, not just a user id.
+      // Enrich with the member's first-party account email so the owner can
+      // identify the person, not just an opaque account id.
+      const auth = getAuthService();
       const enriched = await Promise.all(
         members.map(async (m) => {
           try {
-            const user = await clerkClient.users.getUser(m.userId);
-            const email =
-              user.primaryEmailAddress?.emailAddress ??
-              user.emailAddresses[0]?.emailAddress ??
-              "";
-            const name =
-              [user.firstName, user.lastName].filter(Boolean).join(" ").trim() ||
-              user.username ||
-              email.split("@")[0] ||
-              "Handler";
+            const email = (await auth.getAccountEmail(m.userId)) ?? "";
+            const name = email ? email.split("@")[0] : m.userId;
             return { ...m, email, name };
           } catch {
             return { ...m, email: "", name: m.userId };

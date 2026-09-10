@@ -24,7 +24,7 @@ async function listenApp(): Promise<{ server: Server; base: string }> {
   return { server, base: `http://127.0.0.1:${addr.port}` };
 }
 
-describe("multi-role admin HTTP journeys (local auth; Clerk BLOCKED)", () => {
+describe("multi-role admin HTTP journeys (local first-party auth)", () => {
   it("owner/admin/manager/agent/analyst/unauthorized matrix on representative surfaces", async () => {
     requireIsolatedDb();
     const { ensureCrmSeeded } = await import("./seed.ts");

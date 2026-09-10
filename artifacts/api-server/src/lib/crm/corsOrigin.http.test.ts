@@ -21,7 +21,7 @@ async function listen(
   app.get("/ping", (_req, res) => res.json({ ok: true }));
   app.post("/platform-cookie", (req, res) => {
     const cookie = String(req.headers.cookie ?? "");
-    if (cookie.includes("ctx_platform_session")) {
+    if (cookie.includes("ctx_auth_session")) {
       if (!isCredentialedOriginAllowed(req.headers.origin, env)) {
         res.status(403).json({ error: "CSRF origin rejected" });
         return;
@@ -55,7 +55,7 @@ describe("credentialed CORS HTTP", () => {
         method: "POST",
         headers: {
           origin: "http://127.0.0.1:5174",
-          cookie: "ctx_platform_session=test",
+          cookie: "ctx_auth_session=test",
           "content-type": "application/json",
         },
         body: "{}",
@@ -66,7 +66,7 @@ describe("credentialed CORS HTTP", () => {
         method: "POST",
         headers: {
           origin: "https://evil.example",
-          cookie: "ctx_platform_session=test",
+          cookie: "ctx_auth_session=test",
           "content-type": "application/json",
         },
         body: "{}",
@@ -94,7 +94,7 @@ describe("credentialed CORS HTTP", () => {
         method: "POST",
         headers: {
           origin: "http://127.0.0.1:5174",
-          cookie: "ctx_platform_session=test",
+          cookie: "ctx_auth_session=test",
           "content-type": "application/json",
         },
         body: "{}",

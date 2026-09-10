@@ -184,9 +184,9 @@ router.get(
       const since = Number.isFinite(sinceRaw) && sinceRaw > 0
         ? new Date(sinceRaw)
         : new Date(Date.now() - TRANSMISSION_RETENTION_MS);
-      // Server-side self-filter. We match on Clerk user id (req.userId)
-      // rather than display name so two handlers with the same first name
-      // don't accidentally mute each other.
+      // Server-side self-filter. We match on the first-party auth account id
+      // (req.userId) rather than display name so two handlers with the same
+      // first name don't accidentally mute each other.
       const excludeSelfRaw = String(req.query.excludeSelf ?? "").toLowerCase();
       const excludeSelf =
         excludeSelfRaw === "true" || excludeSelfRaw === "1";

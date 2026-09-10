@@ -1,7 +1,7 @@
 import { createReadStream } from "node:fs";
 import { Router, type IRouter, type Request } from "express";
 import { z } from "zod";
-import { timingSafeEqual, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import {
   db,
   crmInquiriesTable,
@@ -55,15 +55,9 @@ import {
   type SQL,
 } from "drizzle-orm";
 import {
-  clearStaffSessionCookie,
-  decodeStaffSession,
   requirePermission,
   requirePlatformAdmin,
-  revokeStaffSessions,
-  setStaffSessionCookie,
-  upsertStaffFromIdentity,
 } from "../middlewares/requirePlatformAdmin";
-import { isLegacyAccessKeyLoginAllowed } from "../lib/crm/authFlags";
 import { requireAdminRateLimit } from "../lib/crm/adminRateLimit";
 import { ensureCrmSeeded } from "../lib/crm/seed";
 import { writeAudit } from "../lib/crm/audit";
@@ -131,117 +125,9 @@ function pid(req: Request, name = "id"): string {
   return Array.isArray(v) ? String(v[0] ?? "") : String(v ?? "");
 }
 
-router.post("/platform/auth/login", async (req, res, next) => {
-  try {
-    if (!isLegacyAccessKeyLoginAllowed()) {
-      res.status(410).json({
-        error:
-          "Shared access-key login is disabled. Sign in with your ClaimTagX identity provider (Clerk).",
-      });
-      return;
-    }
-    const parsed = z
-      .object({
-        email: z.string().email(),
-        accessKey: z.string().min(8).max(200),
-        name: z.string().max(120).optional(),
-      })
-      .safeParse(req.body ?? {});
-    if (!parsed.success) {
-      res.status(400).json({ error: "Email and access key are required." });
-      return;
-    }
-    const expected = process.env.PLATFORM_STAFF_ACCESS_KEY?.trim();
-    const provided = parsed.data.accessKey;
-    if (!expected) {
-      res.status(401).json({ error: "Invalid access key." });
-      return;
-    }
-    // Constant-time compare (ASVS V2) — avoid early-exit string equality on secrets.
-    const a = Buffer.from(provided);
-    const b = Buffer.from(expected);
-    if (a.length !== b.length || !timingSafeEqual(a, b)) {
-      res.status(401).json({ error: "Invalid access key." });
-      return;
-    }
-    await ensureCrmSeeded();
-    const staff = await upsertStaffFromIdentity({
-      email: parsed.data.email,
-      name: parsed.data.name || parsed.data.email.split("@")[0],
-    });
-    if (!staff) {
-      res.status(403).json({ error: "This email is not authorized for Platform Admin." });
-      return;
-    }
-    setStaffSessionCookie(res, staff);
-    res.json({
-      id: staff.id,
-      email: staff.email,
-      name: staff.name,
-      role: staff.role,
-      permissions: staff.permissions,
-    });
-  } catch (err) {
-    next(err);
-  }
-});
-
-router.post("/platform/auth/logout", async (req, res) => {
-  const cookie = req.cookies?.ctx_platform_session as string | undefined;
-  const session = cookie ? decodeStaffSession(cookie) : null;
-  const staffId = req.platformStaff?.id ?? session?.staffId;
-  clearStaffSessionCookie(res);
-  if (staffId) {
-    try {
-      await revokeStaffSessions(staffId);
-    } catch {
-      /* revocation table must not block logout cookie clear */
-    }
-    void writeAudit({
-      actorType: "staff",
-      actorId: staffId,
-      action: "auth.logout",
-      entityType: "session",
-      entityId: staffId,
-    }).catch(() => undefined);
-  }
-  res.status(204).end();
-});
-
-/** Non-production only: mint session cookie for local admin E2E (not Clerk evidence). */
-router.post("/platform/auth/test-login", async (req, res) => {
-  if (process.env.CRM_HTTP_TEST_AUTH !== "true" || process.env.NODE_ENV === "production") {
-    res.status(404).json({ error: "Not found" });
-    return;
-  }
-  const staffId = typeof req.body?.staffId === "string" ? req.body.staffId : "";
-  if (!staffId || staffId.length < 10) {
-    res.status(400).json({ error: "staffId required" });
-    return;
-  }
-  const [row] = await db.select().from(crmStaffTable).where(eq(crmStaffTable.id, staffId)).limit(1);
-  if (!row || row.status !== "active") {
-    res.status(404).json({ error: "Staff not found" });
-    return;
-  }
-  setStaffSessionCookie(res, row);
-  if (!res.getHeader("set-cookie")) {
-    res.status(500).json({
-      error:
-        "Session cookie not issued — set PLATFORM_STAFF_SESSION_SECRET (or non-prod PLATFORM_STAFF_ACCESS_KEY)",
-    });
-    return;
-  }
-  const permissions =
-    row.permissions && row.permissions.length > 0 ? row.permissions : (ROLE_PERMISSIONS[row.role] ?? []);
-  res.json({
-    id: row.id,
-    email: row.email,
-    name: row.name,
-    role: row.role,
-    permissions,
-  });
-});
+// First-party auth endpoints (login/logout/mfa/reset/bootstrap/test-login) now
+// live in `routes/platformAuth.ts`, mounted BEFORE this router so its public
+// paths are never subjected to the `requirePlatformAdmin` guard below.
 
 router.use("/platform", requirePlatformAdmin);
 router.use("/platform", requireAdminRateLimit);
@@ -289,24 +175,62 @@ router.post(
         })
         .parse(req.body ?? {});
       const emailNormalized = parsed.email.trim().toLowerCase();
+      const { randomBytes } = await import("node:crypto");
+      const { bootstrapTokenHash } = await import("../lib/auth/composeAuthPlatform");
+      const rawToken = randomBytes(32).toString("base64url");
+      const tokenHash = bootstrapTokenHash(rawToken);
+      const expiresAt = new Date(Date.now() + 14 * 24 * 60 * 60_000);
       const [row] = await db
         .insert(crmStaffInvitesTable)
         .values({
           emailNormalized,
           role: parsed.role,
           invitedBy: req.platformStaff!.id,
-          expiresAt: new Date(Date.now() + 14 * 24 * 60 * 60_000),
+          tokenHash,
+          expiresAt,
         })
         .onConflictDoUpdate({
           target: crmStaffInvitesTable.emailNormalized,
           set: {
             role: parsed.role,
             invitedBy: req.platformStaff!.id,
-            expiresAt: new Date(Date.now() + 14 * 24 * 60 * 60_000),
+            tokenHash,
+            expiresAt,
             acceptedAt: null,
           },
         })
         .returning();
+      const siteBase = (process.env.VITE_SITE_URL ?? process.env.PUBLIC_SITE_URL ?? "").replace(
+        /\/+$/,
+        "",
+      );
+      const acceptUrl = siteBase
+        ? `${siteBase}/admin?mode=invite&token=${encodeURIComponent(rawToken)}`
+        : null;
+      const text = [
+        "You have been invited to ClaimTagX Contact Ops.",
+        "",
+        acceptUrl
+          ? `Accept your invitation:\n${acceptUrl}`
+          : "Open the admin app and accept your invitation with the token provided by your administrator.",
+        "",
+        "This invitation expires in 14 days.",
+      ].join("\n");
+      try {
+        await sendTransactionalEmail({
+          to: emailNormalized,
+          subject: "ClaimTagX staff invitation",
+          text,
+          html: `<p>You have been invited to ClaimTagX Contact Ops.</p>${
+            acceptUrl
+              ? `<p><a href="${acceptUrl}">Accept invitation</a></p>`
+              : "<p>Open the admin app to accept your invitation.</p>"
+          }<p>This invitation expires in 14 days.</p>`,
+        });
+      } catch (err) {
+        // Invite row is durable; email failure should not roll back the invite.
+        console.error("staff invite email failed", err);
+      }
       await writeAudit({
         actorType: "staff",
         actorId: req.platformStaff!.id,

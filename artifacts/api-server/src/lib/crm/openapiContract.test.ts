@@ -26,7 +26,9 @@ describe("OpenAPI Contact CRM contract", () => {
   });
 
   it("declares auth, error, and pagination components", () => {
-    assert.match(spec, /clerkBearer/);
+    // First-party session cookie scheme replaced the removed bearer scheme.
+    assert.match(spec, /sessionCookie/);
+    assert.doesNotMatch(spec, /[a-z]+Bearer/);
     assert.match(spec, /Unauthorized/);
     assert.match(spec, /x-permission/);
     assert.match(spec, /PageLimit|limit/);

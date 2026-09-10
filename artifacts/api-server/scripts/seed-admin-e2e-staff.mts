@@ -1,6 +1,6 @@
 /**
  * Seed local admin E2E staff identities (JSON on stdout for Playwright beforeAll).
- * Isolated verify DB only — not Clerk evidence.
+ * Isolated verify DB only - not hosted-IdP evidence.
  */
 import { randomUUID } from "node:crypto";
 

@@ -12,6 +12,7 @@ const specPath = join(root, "lib", "api-spec", "openapi-contact-crm.yaml");
 
 const ROUTE_FILES = [
   "contact.ts",
+  "platformAuth.ts",
   "platformContact.ts",
   "platformChannels.ts",
   "platformGovernance.ts",
@@ -23,9 +24,11 @@ const ROUTE_FILES = [
 
 /**
  * Live Express handlers that are intentionally absent from OpenAPI
- * (test/dev internals, not product CRM surface).
+ * (test/dev internals).
  */
-const ROUTER_OMISSIONS = new Set(["POST /platform/auth/test-login"]);
+const ROUTER_OMISSIONS = new Set([
+  "POST /platform/auth/test-login",
+]);
 
 /**
  * OpenAPI operations that are documented but not yet wired on the router
@@ -77,7 +80,7 @@ function extractOpenApiOps(spec: string): OpenApiOp[] {
   const pathBlocks = spec.split(/\n  \//).slice(1);
   for (const block of pathBlocks) {
     const pathLine = block.split("\n")[0] ?? "";
-    const path = `/${pathLine.replace(/:$/, "").trim()}`;
+    const path = `/${pathLine.replace(/:\s*$/, "").trim()}`;
     const sections = block.split(/(?=^\s{4}(?:get|post|put|patch|delete):\s*$)/m);
     for (const sec of sections) {
       const meth = sec.match(/^\s{4}(get|post|put|patch|delete):\s*$/m);

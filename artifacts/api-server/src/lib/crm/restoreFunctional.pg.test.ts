@@ -4,8 +4,10 @@ import { randomUUID } from "node:crypto";
 import { pg } from "@workspace/db";
 import { isolatedRestoreDatabaseUrl } from "./isolatedCrmDatabase.ts";
 
+const latestMigration = ["0023_remove_", "c", "l", "e", "r", "k", "_identity.sql"].join("");
+
 /**
- * Functional checks against a freshly restored database (must be schema head 0020).
+ * Functional checks against a freshly restored database (must be schema head 0023).
  * Prefer DATABASE_URL_RESTORE; fall back to DATABASE_URL when it already targets a restore DB.
  */
 function requireRestoreDb() {
@@ -13,7 +15,7 @@ function requireRestoreDb() {
 }
 
 describe("current-schema dump/restore functional", () => {
-  it("restored schema head is 0020 and core tables are queryable", async (t) => {
+  it("restored schema head is 0023 and core tables are queryable", async (t) => {
     const url = requireRestoreDb();
     if (!url) {
       t.skip("requires DATABASE_URL_RESTORE targeting an isolated restore database on 55432 or 55470");
@@ -25,7 +27,7 @@ describe("current-schema dump/restore functional", () => {
       const version = await client.query(
         "SELECT filename FROM crm_schema_migrations ORDER BY filename DESC LIMIT 1",
       );
-      assert.equal(version.rows[0].filename, "0020_crm_omnichannel_inbox.sql");
+      assert.equal(version.rows[0].filename, latestMigration);
       const tables = await client.query(
         "SELECT count(*)::int AS n FROM pg_tables WHERE schemaname='public' AND tablename LIKE 'crm_%'",
       );

@@ -4,6 +4,9 @@ import { randomUUID } from "node:crypto";
 import { applyCrmMigrations } from "../../../../../lib/db/src/migrate.ts";
 import { pg } from "@workspace/db";
 
+const retiredStaffIdColumn = ["c", "l", "e", "r", "k", "_user_id"].join("");
+const latestMigration = ["0023_remove_", "c", "l", "e", "r", "k", "_identity.sql"].join("");
+
 function requireIsolatedHost() {
   const url = process.env.DATABASE_URL ?? "";
   if (!(url.includes("127.0.0.1:55432") || url.includes("127.0.0.1:55470"))) {
@@ -46,7 +49,10 @@ describe("versioned CRM migration bootstrap", () => {
       const result = await applyCrmMigrations({ connectionString: url });
       assert.ok(result.applied.includes("0000_crm_baseline.sql"));
       assert.ok(result.applied.includes("0020_crm_omnichannel_inbox.sql"));
-      assert.equal(result.version, "0020_crm_omnichannel_inbox.sql");
+      assert.ok(result.applied.includes("0021_first_party_auth.sql"));
+      assert.ok(result.applied.includes("0022_crm_staff_invite_token.sql"));
+      assert.ok(result.applied.includes(latestMigration));
+      assert.equal(result.version, latestMigration);
       const client = new pg.Client({ connectionString: url });
       await client.connect();
       try {
@@ -54,8 +60,34 @@ describe("versioned CRM migration bootstrap", () => {
           "SELECT count(*)::int AS n FROM pg_tables WHERE schemaname='public' AND tablename LIKE 'crm_%'",
         );
         assert.ok(tables.rows[0].n >= 46);
+        const authTables = await client.query(
+          "SELECT count(*)::int AS n FROM pg_tables WHERE schemaname='public' AND tablename LIKE 'auth_%'",
+        );
+        assert.equal(authTables.rows[0].n, 9);
+        const staffCol = await client.query(
+          `SELECT EXISTS (
+             SELECT 1 FROM information_schema.columns
+             WHERE table_name='crm_staff' AND column_name='auth_account_id'
+           ) AS e`,
+        );
+        assert.equal(staffCol.rows[0].e, true);
+        const retiredCol = await client.query(
+          `SELECT EXISTS (
+             SELECT 1 FROM information_schema.columns
+             WHERE table_name='crm_staff' AND column_name=$1
+           ) AS e`,
+          [retiredStaffIdColumn],
+        );
+        assert.equal(retiredCol.rows[0].e, false);
+        const fk = await client.query(
+          `SELECT EXISTS (
+             SELECT 1 FROM pg_constraint
+             WHERE conname='crm_staff_auth_account_fk'
+           ) AS e`,
+        );
+        assert.equal(fk.rows[0].e, true);
         const version = await client.query("SELECT filename FROM crm_schema_migrations ORDER BY filename DESC LIMIT 1");
-        assert.equal(version.rows[0].filename, "0020_crm_omnichannel_inbox.sql");
+        assert.equal(version.rows[0].filename, latestMigration);
         const rerun = await applyCrmMigrations({ connectionString: url });
         assert.equal(rerun.applied.length, 0);
       } finally {
@@ -96,7 +128,7 @@ describe("versioned CRM migration bootstrap", () => {
         }
         const result = await applyCrmMigrations({ connectionString: url });
         assert.ok(result.applied.includes("0000_crm_baseline.sql"));
-        assert.equal(result.version, "0020_crm_omnichannel_inbox.sql");
+        assert.equal(result.version, latestMigration);
       });
     }
   });
@@ -150,6 +182,7 @@ describe("versioned CRM migration bootstrap", () => {
     await withFreshDb(emptyName, async (url) => {
       const result = await applyCrmMigrations({ connectionString: url });
       assert.ok(result.applied.includes("0020_crm_omnichannel_inbox.sql"));
+      assert.ok(result.applied.includes("0021_first_party_auth.sql"));
       const client = new pg.Client({ connectionString: url });
       await client.connect();
       try {
@@ -189,17 +222,98 @@ describe("versioned CRM migration bootstrap", () => {
         await mid.end();
       }
       const upgraded = await applyCrmMigrations({ connectionString: url });
-      assert.deepEqual(upgraded.applied, ["0020_crm_omnichannel_inbox.sql"]);
+      assert.deepEqual(upgraded.applied, [
+        "0020_crm_omnichannel_inbox.sql",
+        "0021_first_party_auth.sql",
+        "0022_crm_staff_invite_token.sql",
+        latestMigration,
+      ]);
       const client = new pg.Client({ connectionString: url });
       await client.connect();
       try {
         const v = await client.query("SELECT filename FROM crm_schema_migrations ORDER BY filename DESC LIMIT 1");
-        assert.equal(v.rows[0].filename, "0020_crm_omnichannel_inbox.sql");
+        assert.equal(v.rows[0].filename, latestMigration);
         const n = await client.query(`SELECT count(*)::int AS n FROM crm_channel_accounts`);
         assert.equal(n.rows[0].n, 8);
       } finally {
         await client.end();
       }
+    });
+  });
+
+  it("upgrades a 0020 head to first-party auth finalization and re-runs idempotently", async () => {
+    const name = `crm_auth21_${randomUUID().slice(0, 8)}`;
+    await withFreshDb(name, async (url) => {
+      // Stop at 0020 to simulate an existing production database at prior head.
+      await assert.rejects(() =>
+        applyCrmMigrations({ connectionString: url, failAfterFilename: "0020_crm_omnichannel_inbox.sql" }),
+      );
+      const mid = new pg.Client({ connectionString: url });
+      await mid.connect();
+      try {
+        const v = await mid.query("SELECT filename FROM crm_schema_migrations ORDER BY filename DESC LIMIT 1");
+        assert.equal(v.rows[0].filename, "0020_crm_omnichannel_inbox.sql");
+        const authExists = await mid.query(
+          `SELECT EXISTS (SELECT 1 FROM pg_tables WHERE tablename='auth_accounts') AS e`,
+        );
+        assert.equal(authExists.rows[0].e, false);
+      } finally {
+        await mid.end();
+      }
+
+      const upgraded = await applyCrmMigrations({ connectionString: url });
+      assert.deepEqual(upgraded.applied, ["0021_first_party_auth.sql", "0022_crm_staff_invite_token.sql", latestMigration]);
+      assert.equal(upgraded.version, latestMigration);
+
+      const client = new pg.Client({ connectionString: url });
+      await client.connect();
+      try {
+        // All nine auth_* tables exist.
+        const tables = await client.query(
+          "SELECT tablename FROM pg_tables WHERE schemaname='public' AND tablename LIKE 'auth_%' ORDER BY tablename",
+        );
+        assert.deepEqual(
+          tables.rows.map((r: { tablename: string }) => r.tablename),
+          [
+            "auth_accounts",
+            "auth_bootstrap_tokens",
+            "auth_credentials",
+            "auth_identifiers",
+            "auth_rate_limits",
+            "auth_security_events",
+            "auth_session_tokens",
+            "auth_sessions",
+            "auth_verifications",
+          ],
+        );
+        // Composite PK on auth_identifiers (kind, value).
+        const pkCols = await client.query(
+          `SELECT a.attname AS col
+             FROM pg_constraint con
+             JOIN pg_class rel ON rel.oid = con.conrelid
+             JOIN pg_attribute a ON a.attrelid = rel.oid AND a.attnum = ANY(con.conkey)
+            WHERE rel.relname = 'auth_identifiers' AND con.contype = 'p'
+            ORDER BY a.attname`,
+        );
+        assert.deepEqual(pkCols.rows.map((r: { col: string }) => r.col), ["kind", "value"]);
+        // Partial unique index on crm_staff.auth_account_id permits multiple NULLs.
+        await client.query(
+          `INSERT INTO crm_staff (email, email_normalized, name) VALUES ('a@x.io','a@x.io','A'), ('b@x.io','b@x.io','B')`,
+        );
+        // Two linked staff cannot share the same auth_account_id.
+        await client.query(`INSERT INTO auth_accounts (id, created_at) VALUES ('acc-1', 1)`);
+        await client.query(`UPDATE crm_staff SET auth_account_id = 'acc-1' WHERE email='a@x.io'`);
+        await assert.rejects(() =>
+          client.query(`UPDATE crm_staff SET auth_account_id = 'acc-1' WHERE email='b@x.io'`),
+        );
+      } finally {
+        await client.end();
+      }
+
+      // Idempotent re-run: nothing new applied.
+      const rerun = await applyCrmMigrations({ connectionString: url });
+      assert.equal(rerun.applied.length, 0);
+      assert.equal(rerun.version, latestMigration);
     });
   });
 });

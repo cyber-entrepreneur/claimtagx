@@ -1,15 +1,19 @@
-import { createHmac, timingSafeEqual } from "node:crypto";
 import type { NextFunction, Request, Response } from "express";
-import { clerkClient, getAuth } from "@clerk/express";
-import { db, crmStaffTable, crmTeamsTable, crmTeamMembersTable, crmStaffInvitesTable, crmSessionRevocationsTable, type CrmStaff } from "@workspace/db";
+import {
+  db,
+  crmStaffTable,
+  crmTeamsTable,
+  crmTeamMembersTable,
+  crmStaffInvitesTable,
+  type CrmStaff,
+} from "@workspace/db";
 import { and, eq, isNull, gt } from "drizzle-orm";
 import { ROLE_PERMISSIONS, hasPermission, type PlatformPermission } from "../lib/crm/rbac";
 import { writeAudit } from "../lib/crm/audit";
 import { logger } from "../lib/logger";
 import { isCrmHttpTestAuthAllowed } from "../lib/crm/authFlags";
 import { isCredentialedOriginAllowed } from "../lib/crm/corsOrigin";
-
-const COOKIE = "ctx_platform_session";
+import { resolvePrincipal } from "./requireAuthSession";
 
 declare global {
   // eslint-disable-next-line @typescript-eslint/no-namespace
@@ -21,109 +25,18 @@ declare global {
   }
 }
 
-interface SessionPayload {
-  staffId: string;
-  email: string;
-  iat: number;
-  exp: number;
-}
+// ---------------------------------------------------------------------------
+// Staff <-> first-party auth account linkage
+//
+// Platform Admin (CRM) identity is backed by the first-party auth platform
+// (`@workspace/first-party-auth`) composed in
+// `lib/auth/composeAuthPlatform.ts`. A `crm_staff` row is linked to exactly one
+// auth account via `crm_staff.auth_account_id`. The shared session cookie
+// (`ctx_auth_session`) is resolved by `resolvePrincipal` → auth accountId →
+// this linkage → the staff row.
+// ---------------------------------------------------------------------------
 
-function sessionSecrets(): string[] {
-  const current = process.env.PLATFORM_STAFF_SESSION_SECRET?.trim();
-  const previous = process.env.PLATFORM_STAFF_SESSION_SECRET_PREVIOUS?.trim();
-  const out: string[] = [];
-  if (current) out.push(current);
-  if (previous && previous !== current) out.push(previous);
-  if (!out.length && process.env.NODE_ENV !== "production") {
-    const fallback = process.env.PLATFORM_STAFF_ACCESS_KEY?.trim();
-    if (fallback) out.push(fallback);
-  }
-  return out;
-}
-
-function sessionSecret(): string | null {
-  return sessionSecrets()[0] ?? null;
-}
-
-function signPayload(json: string, secret: string): string {
-  return createHmac("sha256", secret).update(json).digest("base64url");
-}
-
-export function encodeStaffSession(payload: SessionPayload): string | null {
-  const secret = sessionSecret();
-  if (!secret) return null;
-  const json = JSON.stringify(payload);
-  const body = Buffer.from(json).toString("base64url");
-  return `${body}.${signPayload(body, secret)}`;
-}
-
-export function decodeStaffSession(token: string): SessionPayload | null {
-  const [body, sig] = token.split(".");
-  if (!body || !sig) return null;
-  const a = Buffer.from(sig);
-  let matched = false;
-  for (const secret of sessionSecrets()) {
-    const expected = signPayload(body, secret);
-    const b = Buffer.from(expected);
-    if (a.length === b.length && timingSafeEqual(a, b)) {
-      matched = true;
-      break;
-    }
-  }
-  if (!matched) return null;
-  try {
-    const payload = JSON.parse(Buffer.from(body, "base64url").toString("utf8")) as SessionPayload;
-    if (!payload.staffId || payload.exp < Date.now()) return null;
-    return payload;
-  } catch {
-    return null;
-  }
-}
-
-export async function revokeStaffSessions(staffId: string): Promise<void> {
-  await db
-    .insert(crmSessionRevocationsTable)
-    .values({ staffId, revokedBefore: new Date() })
-    .onConflictDoUpdate({
-      target: crmSessionRevocationsTable.staffId,
-      set: { revokedBefore: new Date() },
-    });
-}
-
-async function sessionIsRevoked(payload: SessionPayload): Promise<boolean> {
-  const [row] = await db
-    .select()
-    .from(crmSessionRevocationsTable)
-    .where(eq(crmSessionRevocationsTable.staffId, payload.staffId))
-    .limit(1);
-  if (!row) return false;
-  const issuedAt = typeof payload.iat === "number" ? payload.iat : 0;
-  return issuedAt <= row.revokedBefore.getTime();
-}
-
-export function setStaffSessionCookie(res: Response, staff: CrmStaff): void {
-  const now = Date.now();
-  const token = encodeStaffSession({
-    staffId: staff.id,
-    email: staff.emailNormalized,
-    iat: now,
-    exp: now + 7 * 24 * 60 * 60 * 1000,
-  });
-  if (!token) return;
-  res.cookie(COOKIE, token, {
-    httpOnly: true,
-    sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
-    path: "/",
-    maxAge: 7 * 24 * 60 * 60 * 1000,
-  });
-}
-
-export function clearStaffSessionCookie(res: Response): void {
-  res.clearCookie(COOKIE, { path: "/" });
-}
-
-function allowedEmails(): Set<string> {
+export function allowedEmails(): Set<string> {
   const raw = process.env.PLATFORM_ADMIN_EMAILS ?? "";
   return new Set(
     raw
@@ -133,26 +46,71 @@ function allowedEmails(): Set<string> {
   );
 }
 
-export async function upsertStaffFromIdentity(params: {
+async function ensureOnSalesTeam(staffId: string): Promise<void> {
+  const [team] = await db
+    .select()
+    .from(crmTeamsTable)
+    .where(eq(crmTeamsTable.slug, "sales"))
+    .limit(1);
+  if (!team) return;
+  await db
+    .insert(crmTeamMembersTable)
+    .values({ teamId: team.id, staffId })
+    .onConflictDoNothing();
+}
+
+/** Load the active staff row linked to a first-party auth account, if any. */
+export async function loadActiveStaffByAuthAccountId(
+  authAccountId: string,
+): Promise<CrmStaff | null> {
+  const [row] = await db
+    .select()
+    .from(crmStaffTable)
+    .where(eq(crmStaffTable.authAccountId, authAccountId))
+    .limit(1);
+  if (!row || row.status !== "active") return null;
+  return row;
+}
+
+/**
+ * Link a freshly-authenticated first-party account to a `crm_staff` row by
+ * email, honouring the same authorization gates the retired IdP path enforced
+ * (allow-list / pending invite / bootstrap). Returns the active staff row, or
+ * `null` when the email is not authorized for Platform Admin.
+ *
+ * Idempotent: on repeat logins it just refreshes `lastLoginAt` and (re)binds
+ * `authAccountId` when missing.
+ */
+export async function linkStaffForAuthAccount(params: {
   email: string;
-  name: string;
-  clerkUserId?: string;
+  name?: string;
+  authAccountId: string;
 }): Promise<CrmStaff | null> {
   const emailNormalized = params.email.trim().toLowerCase();
   if (!emailNormalized) return null;
   const allow = allowedEmails();
+
   const [existing] = await db
     .select()
     .from(crmStaffTable)
     .where(eq(crmStaffTable.emailNormalized, emailNormalized))
     .limit(1);
+
   if (existing) {
     if (existing.status !== "active") return null;
+    // Refuse to hijack a staff row already bound to a different account.
+    if (existing.authAccountId && existing.authAccountId !== params.authAccountId) {
+      logger.warn(
+        { staffId: existing.id },
+        "staff already linked to a different auth account; refusing rebind",
+      );
+      return null;
+    }
     const patch: Partial<typeof crmStaffTable.$inferInsert> = {
       lastLoginAt: new Date(),
       name: params.name || existing.name,
     };
-    if (params.clerkUserId && !existing.clerkUserId) patch.clerkUserId = params.clerkUserId;
+    if (!existing.authAccountId) patch.authAccountId = params.authAccountId;
     const [updated] = await db
       .update(crmStaffTable)
       .set(patch)
@@ -161,8 +119,9 @@ export async function upsertStaffFromIdentity(params: {
     await ensureOnSalesTeam(updated.id);
     return updated;
   }
-  const bootstrapOpen =
-    allow.size === 0 && process.env.NODE_ENV !== "production";
+
+  // No staff row yet — create one only if authorized.
+  const bootstrapOpen = allow.size === 0 && process.env.NODE_ENV !== "production";
   const [invite] = await db
     .select()
     .from(crmStaffInvitesTable)
@@ -190,7 +149,7 @@ export async function upsertStaffFromIdentity(params: {
       name: params.name || emailNormalized.split("@")[0],
       role,
       permissions: ROLE_PERMISSIONS[role] ?? ROLE_PERMISSIONS.sales,
-      clerkUserId: params.clerkUserId,
+      authAccountId: params.authAccountId,
       lastLoginAt: new Date(),
     })
     .returning();
@@ -214,39 +173,6 @@ export async function upsertStaffFromIdentity(params: {
   return created;
 }
 
-async function ensureOnSalesTeam(staffId: string): Promise<void> {
-  const [team] = await db
-    .select()
-    .from(crmTeamsTable)
-    .where(eq(crmTeamsTable.slug, "sales"))
-    .limit(1);
-  if (!team) return;
-  await db
-    .insert(crmTeamMembersTable)
-    .values({ teamId: team.id, staffId })
-    .onConflictDoNothing();
-}
-
-async function staffFromClerk(req: Request): Promise<CrmStaff | null> {
-  try {
-    const auth = getAuth(req);
-    const userId = auth?.userId;
-    if (!userId) return null;
-    const user = await clerkClient.users.getUser(userId);
-    const email =
-      user.primaryEmailAddress?.emailAddress ??
-      user.emailAddresses[0]?.emailAddress ??
-      "";
-    const name =
-      [user.firstName, user.lastName].filter(Boolean).join(" ").trim() ||
-      user.username ||
-      email.split("@")[0];
-    return upsertStaffFromIdentity({ email, name, clerkUserId: userId });
-  } catch {
-    return null;
-  }
-}
-
 function originAllowed(req: Request): boolean {
   const origin = req.headers.origin;
   if (!origin) return true;
@@ -267,6 +193,7 @@ export async function requirePlatformAdmin(
     if (process.env.CRM_HTTP_TEST_AUTH === "true" && process.env.NODE_ENV === "production") {
       throw new Error("CRM_HTTP_TEST_AUTH is forbidden in production");
     }
+    // Non-production e2e bypass: trust an explicit staff id header.
     if (isCrmHttpTestAuthAllowed() && process.env.NODE_ENV !== "production") {
       const testId = req.headers["x-crm-test-staff-id"];
       if (typeof testId === "string" && testId.length > 10) {
@@ -278,27 +205,22 @@ export async function requirePlatformAdmin(
         }
       }
     }
-    let staff: CrmStaff | null = await staffFromClerk(req);
-    if (!staff) {
-      const cookie = req.cookies?.[COOKIE] as string | undefined;
-      if (cookie) {
-        const session = decodeStaffSession(cookie);
-        if (session && !(await sessionIsRevoked(session))) {
-          const [row] = await db
-            .select()
-            .from(crmStaffTable)
-            .where(eq(crmStaffTable.id, session.staffId))
-            .limit(1);
-          if (row && row.status === "active") staff = row;
-        }
+
+    // First-party session (shared `ctx_auth_session` cookie or Bearer opaque
+    // token) → auth accountId → linked crm_staff row.
+    const principal = await resolvePrincipal(req);
+    if (principal) {
+      req.authAccountId = principal.accountId;
+      req.authSessionId = principal.sessionId;
+      const staff = await loadActiveStaffByAuthAccountId(principal.accountId);
+      if (staff) {
+        req.platformStaff = staff;
+        next();
+        return;
       }
     }
-    if (!staff) {
-      res.status(401).json({ error: "Unauthorized" });
-      return;
-    }
-    req.platformStaff = staff;
-    next();
+
+    res.status(401).json({ error: "Unauthorized" });
   } catch (err) {
     logger.error({ err }, "platform admin auth failed");
     next(err);

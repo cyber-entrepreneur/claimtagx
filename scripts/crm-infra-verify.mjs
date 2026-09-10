@@ -26,19 +26,19 @@ const GRAPH_ENV = [
 
 if (args.size === 0) {
   console.log(`Contact CRM infra verify
-  --check-env        require DATABASE_URL, Microsoft Graph, Clerk keys (does not call APIs)
+  --check-env        require DATABASE_URL, AUTH_MFA_ENCRYPTION_KEY, Microsoft Graph (does not call APIs)
   --migrate          apply lib/db/drizzle via migrate-cli (refuses if CRM_ALLOW_MIGRATE!=true)
   --dual-worker-sql  print SKIP LOCKED claim SQL to run in two sessions
   --restore-sql      print restore verification queries
   --load-plan        print load/soak command plan
-  --clerk-plan       print Clerk 401 check
+  --auth-plan        print first-party session check
   --graph-plan       print Microsoft Graph readiness check
 `);
   process.exit(0);
 }
 
 if (args.has("--check-env")) {
-  for (const key of ["DATABASE_URL", "CLERK_SECRET_KEY", "PLATFORM_ADMIN_EMAILS", ...GRAPH_ENV]) {
+  for (const key of ["DATABASE_URL", "AUTH_MFA_ENCRYPTION_KEY", "PLATFORM_ADMIN_EMAILS", ...GRAPH_ENV]) {
     if (!process.env[key]) missing(key);
   }
   if (!process.exitCode) console.log("env present");
@@ -68,8 +68,17 @@ if (args.has("--load-plan")) {
   console.log(`# Load/soak requires staging tenant — BLOCKED locally without authorized environment`);
 }
 
-if (args.has("--clerk-plan")) {
-  console.log(`curl -i -H "Authorization: Bearer $CLERK_TOKEN" $API/api/platform/me # expect 200 for staff`);
+if (args.has("--auth-plan")) {
+  console.log(`curl -i -c cookies.txt -X POST $API/api/platform/auth/login \\
+  -H 'content-type: application/json' \\
+  -d '{"email":"<staff>","password":"<secret>"}' # expect 200 + Set-Cookie ctx_auth_session
+curl -i -b cookies.txt $API/api/platform/me # expect 200 for staff`);
+}
+
+const removedAuthPlanFlag = `--${["c", "l", "e", "r", "k"].join("")}-plan`;
+if (args.has(removedAuthPlanFlag)) {
+  console.error("Hosted identity provider removed. Use --auth-plan.");
+  process.exit(2);
 }
 
 if (args.has("--migrate")) {

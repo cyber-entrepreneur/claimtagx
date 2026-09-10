@@ -1,6 +1,5 @@
 import { and, eq, gte, sql } from "drizzle-orm";
 import { createHash } from "node:crypto";
-import { clerkClient } from "@clerk/express";
 import {
   db,
   eventsTable,
@@ -9,6 +8,7 @@ import {
 } from "@workspace/db";
 import { logger } from "./logger";
 import { sendTamperSpikeEmail } from "./email";
+import { getAuthService } from "./auth/composeAuthPlatform";
 
 // ---------------------------------------------------------------------------
 // Tamper-attempt spike alerting.
@@ -80,14 +80,13 @@ async function getOwnerEmails(venueCode: string): Promise<string[]> {
       ),
     );
   if (rows.length === 0) return [];
+  const auth = getAuthService();
   const emails: string[] = [];
   for (const r of rows) {
     try {
-      const user = await clerkClient.users.getUser(r.userId);
-      const email =
-        user.primaryEmailAddress?.emailAddress ??
-        user.emailAddresses[0]?.emailAddress ??
-        "";
+      // Owner identity is first-party: resolve the verified email from the
+      // handler's auth account (handler_user_id is now an auth account id).
+      const email = (await auth.getAccountEmail(r.userId)) ?? "";
       if (email) emails.push(email);
     } catch (err) {
       logger.warn(

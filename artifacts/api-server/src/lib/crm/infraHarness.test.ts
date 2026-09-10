@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 /**
- * Failure-mode contract for load/soak/restore/Clerk/Graph/staging migrate/dual-worker.
+ * Failure-mode contract for load/soak/restore/hosted-IdP removal/Graph/staging migrate/dual-worker.
  * These checks are executable without infrastructure: they assert the runbook scripts exist
  * and that skip conditions are explicit. Live runs stay infrastructure-dependent.
  */
