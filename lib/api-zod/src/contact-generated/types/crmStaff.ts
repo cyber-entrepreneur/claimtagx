@@ -8,10 +8,12 @@ Operations. Paths are relative to the same `/api` server as `openapi.yaml`.
 **Auth**
 - Public `/contact/*` form endpoints are unauthenticated.
 - Inbound webhooks use `X-Webhook-Secret`.
-- Platform routes accept Clerk `Authorization: Bearer` **or** the
-  `ctx_platform_session` cookie (local/dev bridge). `POST /platform/auth/login`
-  is disabled in production (HTTP 410) unless an explicit non-prod override
-  is set.
+- Platform (and Handler) routes use first-party ClaimTagX auth: the
+  `ctx_auth_session` cookie (an opaque session/refresh token) **or** an
+  opaque `Authorization: Bearer` token. No hosted identity provider is used.
+  Sign in via `POST /platform/auth/login` (email + password); MFA, password
+  reset, invitation acceptance and first-owner bootstrap are also
+  first-party endpoints under `/platform/auth/*`.
 
 **Permissions**
 Platform operations declare `x-permission` matching `PLATFORM_PERMISSIONS`
@@ -27,8 +29,11 @@ Live handlers are `x-status: implemented`. Remaining stubs are
 
 export interface CrmStaff {
   id: string;
-  /** @nullable */
-  clerkUserId?: string | null;
+  /**
+   * First-party auth account id linked to this staff row.
+   * @nullable
+   */
+  authAccountId?: string | null;
   email: string;
   emailNormalized: string;
   name: string;

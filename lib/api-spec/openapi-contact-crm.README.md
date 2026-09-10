@@ -32,7 +32,7 @@ Append the CRM tags from the fragment (`contact-public`, `contact-webhooks`,
 
 ### 2. Security schemes
 
-Copy `components.securitySchemes` (`clerkBearer`, `platformCookie`,
+Copy `components.securitySchemes` (`sessionCookie`, `bearerToken`,
 `webhookSecret`) into the main document. The product spec currently has none.
 
 ### 3. Shared parameters, responses, schemas
@@ -115,9 +115,9 @@ Filter on `x-status: planned` if you add an Orval transformer.
 | Webhooks | `X-Webhook-Secret` (`webhookSecret`) |
 | `POST /platform/auth/login` | none; **410** in production unless the non-prod access-key override is on |
 | `POST /platform/auth/logout` | none (clears cookie) |
-| All other `/platform/*` | Clerk `Authorization: Bearer` **or** cookie `ctx_platform_session` |
+| All other `/platform/*` | first-party opaque `Authorization: Bearer` token **or** cookie `ctx_auth_session` |
 
-OpenAPI `security` is an OR of `clerkBearer` and `platformCookie`, matching
+OpenAPI `security` is an OR of `sessionCookie` and `bearerToken`, matching
 `requirePlatformAdmin`.
 
 ## Permissions (`x-permission`)
@@ -155,5 +155,5 @@ in-memory `readState` filter. Planned audit list uses the same page shape.
 - Inbox `hasMeeting` is always `false` in the current list handler.
 - Platform Zod `.parse()` failures may surface as 500 today; the spec still
   documents 400 as the intended contract.
-- Login cookie name is `ctx_platform_session`.
+- Login cookie name is `ctx_auth_session`.
 - Inquiry references match `CTX-YYYY-NNNNNN`.

@@ -8,10 +8,12 @@ Operations. Paths are relative to the same `/api` server as `openapi.yaml`.
 **Auth**
 - Public `/contact/*` form endpoints are unauthenticated.
 - Inbound webhooks use `X-Webhook-Secret`.
-- Platform routes accept Clerk `Authorization: Bearer` **or** the
-  `ctx_platform_session` cookie (local/dev bridge). `POST /platform/auth/login`
-  is disabled in production (HTTP 410) unless an explicit non-prod override
-  is set.
+- Platform (and Handler) routes use first-party ClaimTagX auth: the
+  `ctx_auth_session` cookie (an opaque session/refresh token) **or** an
+  opaque `Authorization: Bearer` token. No hosted identity provider is used.
+  Sign in via `POST /platform/auth/login` (email + password); MFA, password
+  reset, invitation acceptance and first-owner bootstrap are also
+  first-party endpoints under `/platform/auth/*`.
 
 **Permissions**
 Platform operations declare `x-permission` matching `PLATFORM_PERMISSIONS`
@@ -161,7 +163,25 @@ import type {
   ObjectPlatformDsarRequestBody,
   OverridePlatformRecordLock200,
   OverridePlatformRecordLockBody,
+  PlatformAuthBootstrapRequest,
+  PlatformAuthChangePasswordRequest,
+  PlatformAuthChangePasswordResponse,
+  PlatformAuthForgotPassword200,
+  PlatformAuthForgotPasswordBody,
+  PlatformAuthInviteAcceptRequest,
+  PlatformAuthInviteAcceptResponse,
+  PlatformAuthMfaChallengeBody,
+  PlatformAuthMfaConfirmRequest,
+  PlatformAuthMfaEnrollResponse,
+  PlatformAuthRecoveryCodesResponse,
+  PlatformAuthResetPassword200,
+  PlatformAuthResetPasswordBody,
+  PlatformAuthSession200,
+  PlatformAuthSessionsResponse,
+  PlatformAuthVerifiedResponse,
+  PlatformAuthVerifyEmailRequest,
   PlatformLoginRequest,
+  PlatformLoginResponse,
   PlatformStaffSession,
   PostPlatformGovernanceDsarExportBody,
   PostPlatformLegalHoldBody,
@@ -1249,11 +1269,13 @@ export const useXContactWebhook = <
 };
 
 /**
- * Mints `ctx_platform_session` after validating `PLATFORM_STAFF_ACCESS_KEY`.
-Returns **410** unless `PLATFORM_ALLOW_ACCESS_KEY_LOGIN=true` and
-`NODE_ENV` is not `production`. Production staff must use Clerk.
+ * Authenticates against the first-party ClaimTagX auth platform. On full
+success sets the `ctx_auth_session` cookie and (for CRM accounts) links
+the staff row. Errors are intentionally generic to avoid account
+enumeration. When MFA is required, returns `mfaRequired: true` +
+`accountId`; complete via `POST /platform/auth/mfa/challenge`.
 
- * @summary Dev-only shared access-key login
+ * @summary First-party email + password login
  */
 export const getPlatformAuthLoginUrl = () => {
   return `/api/platform/auth/login`;
@@ -1262,8 +1284,8 @@ export const getPlatformAuthLoginUrl = () => {
 export const platformAuthLogin = async (
   platformLoginRequest: PlatformLoginRequest,
   options?: RequestInit,
-): Promise<PlatformStaffSession> => {
-  return customFetch<PlatformStaffSession>(getPlatformAuthLoginUrl(), {
+): Promise<PlatformLoginResponse> => {
+  return customFetch<PlatformLoginResponse>(getPlatformAuthLoginUrl(), {
     ...options,
     method: "POST",
     headers: { "Content-Type": "application/json", ...options?.headers },
@@ -1316,7 +1338,7 @@ export type PlatformAuthLoginMutationBody = BodyType<PlatformLoginRequest>;
 export type PlatformAuthLoginMutationError = ErrorType<ContactApiError>;
 
 /**
- * @summary Dev-only shared access-key login
+ * @summary First-party email + password login
  */
 export const usePlatformAuthLogin = <
   TError = ErrorType<ContactApiError>,
@@ -1339,7 +1361,94 @@ export const usePlatformAuthLogin = <
 };
 
 /**
- * @summary Clear the platform staff session cookie
+ * @summary Submit the second factor after an mfa_required login
+ */
+export const getPlatformAuthMfaChallengeUrl = () => {
+  return `/api/platform/auth/mfa/challenge`;
+};
+
+export const platformAuthMfaChallenge = async (
+  platformAuthMfaChallengeBody: PlatformAuthMfaChallengeBody,
+  options?: RequestInit,
+): Promise<PlatformLoginResponse> => {
+  return customFetch<PlatformLoginResponse>(getPlatformAuthMfaChallengeUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(platformAuthMfaChallengeBody),
+  });
+};
+
+export const getPlatformAuthMfaChallengeMutationOptions = <
+  TError = ErrorType<ContactApiError>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof platformAuthMfaChallenge>>,
+    TError,
+    { data: BodyType<PlatformAuthMfaChallengeBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof platformAuthMfaChallenge>>,
+  TError,
+  { data: BodyType<PlatformAuthMfaChallengeBody> },
+  TContext
+> => {
+  const mutationKey = ["platformAuthMfaChallenge"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof platformAuthMfaChallenge>>,
+    { data: BodyType<PlatformAuthMfaChallengeBody> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return platformAuthMfaChallenge(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type PlatformAuthMfaChallengeMutationResult = NonNullable<
+  Awaited<ReturnType<typeof platformAuthMfaChallenge>>
+>;
+export type PlatformAuthMfaChallengeMutationBody =
+  BodyType<PlatformAuthMfaChallengeBody>;
+export type PlatformAuthMfaChallengeMutationError = ErrorType<ContactApiError>;
+
+/**
+ * @summary Submit the second factor after an mfa_required login
+ */
+export const usePlatformAuthMfaChallenge = <
+  TError = ErrorType<ContactApiError>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof platformAuthMfaChallenge>>,
+    TError,
+    { data: BodyType<PlatformAuthMfaChallengeBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof platformAuthMfaChallenge>>,
+  TError,
+  { data: BodyType<PlatformAuthMfaChallengeBody> },
+  TContext
+> => {
+  return useMutation(getPlatformAuthMfaChallengeMutationOptions(options));
+};
+
+/**
+ * @summary Revoke the current session and clear the cookie
  */
 export const getPlatformAuthLogoutUrl = () => {
   return `/api/platform/auth/logout`;
@@ -1355,7 +1464,7 @@ export const platformAuthLogout = async (
 };
 
 export const getPlatformAuthLogoutMutationOptions = <
-  TError = ErrorType<unknown>,
+  TError = ErrorType<UnauthorizedResponse>,
   TContext = unknown,
 >(options?: {
   mutation?: UseMutationOptions<
@@ -1394,13 +1503,13 @@ export type PlatformAuthLogoutMutationResult = NonNullable<
   Awaited<ReturnType<typeof platformAuthLogout>>
 >;
 
-export type PlatformAuthLogoutMutationError = ErrorType<unknown>;
+export type PlatformAuthLogoutMutationError = ErrorType<UnauthorizedResponse>;
 
 /**
- * @summary Clear the platform staff session cookie
+ * @summary Revoke the current session and clear the cookie
  */
 export const usePlatformAuthLogout = <
-  TError = ErrorType<unknown>,
+  TError = ErrorType<UnauthorizedResponse>,
   TContext = unknown,
 >(options?: {
   mutation?: UseMutationOptions<
@@ -1417,6 +1526,1205 @@ export const usePlatformAuthLogout = <
   TContext
 > => {
   return useMutation(getPlatformAuthLogoutMutationOptions(options));
+};
+
+/**
+ * @summary Revoke every session for the current account
+ */
+export const getPlatformAuthLogoutAllUrl = () => {
+  return `/api/platform/auth/logout-all`;
+};
+
+export const platformAuthLogoutAll = async (
+  options?: RequestInit,
+): Promise<void> => {
+  return customFetch<void>(getPlatformAuthLogoutAllUrl(), {
+    ...options,
+    method: "POST",
+  });
+};
+
+export const getPlatformAuthLogoutAllMutationOptions = <
+  TError = ErrorType<UnauthorizedResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof platformAuthLogoutAll>>,
+    TError,
+    void,
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof platformAuthLogoutAll>>,
+  TError,
+  void,
+  TContext
+> => {
+  const mutationKey = ["platformAuthLogoutAll"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof platformAuthLogoutAll>>,
+    void
+  > = () => {
+    return platformAuthLogoutAll(requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type PlatformAuthLogoutAllMutationResult = NonNullable<
+  Awaited<ReturnType<typeof platformAuthLogoutAll>>
+>;
+
+export type PlatformAuthLogoutAllMutationError =
+  ErrorType<UnauthorizedResponse>;
+
+/**
+ * @summary Revoke every session for the current account
+ */
+export const usePlatformAuthLogoutAll = <
+  TError = ErrorType<UnauthorizedResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof platformAuthLogoutAll>>,
+    TError,
+    void,
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof platformAuthLogoutAll>>,
+  TError,
+  void,
+  TContext
+> => {
+  return useMutation(getPlatformAuthLogoutAllMutationOptions(options));
+};
+
+/**
+ * @summary Resolve the current first-party session identity
+ */
+export const getPlatformAuthSessionUrl = () => {
+  return `/api/platform/auth/session`;
+};
+
+export const platformAuthSession = async (
+  options?: RequestInit,
+): Promise<PlatformAuthSession200> => {
+  return customFetch<PlatformAuthSession200>(getPlatformAuthSessionUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getPlatformAuthSessionQueryKey = () => {
+  return [`/api/platform/auth/session`] as const;
+};
+
+export const getPlatformAuthSessionQueryOptions = <
+  TData = Awaited<ReturnType<typeof platformAuthSession>>,
+  TError = ErrorType<UnauthorizedResponse>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof platformAuthSession>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getPlatformAuthSessionQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof platformAuthSession>>
+  > = ({ signal }) => platformAuthSession({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof platformAuthSession>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type PlatformAuthSessionQueryResult = NonNullable<
+  Awaited<ReturnType<typeof platformAuthSession>>
+>;
+export type PlatformAuthSessionQueryError = ErrorType<UnauthorizedResponse>;
+
+/**
+ * @summary Resolve the current first-party session identity
+ */
+
+export function usePlatformAuthSession<
+  TData = Awaited<ReturnType<typeof platformAuthSession>>,
+  TError = ErrorType<UnauthorizedResponse>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof platformAuthSession>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getPlatformAuthSessionQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * Always returns `{ ok: true }` regardless of whether the account exists,
+to prevent account enumeration. If the account exists, a one-time reset
+code is emailed.
+
+ * @summary Request a password-reset code (always generic success)
+ */
+export const getPlatformAuthForgotPasswordUrl = () => {
+  return `/api/platform/auth/forgot-password`;
+};
+
+export const platformAuthForgotPassword = async (
+  platformAuthForgotPasswordBody: PlatformAuthForgotPasswordBody,
+  options?: RequestInit,
+): Promise<PlatformAuthForgotPassword200> => {
+  return customFetch<PlatformAuthForgotPassword200>(
+    getPlatformAuthForgotPasswordUrl(),
+    {
+      ...options,
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...options?.headers },
+      body: JSON.stringify(platformAuthForgotPasswordBody),
+    },
+  );
+};
+
+export const getPlatformAuthForgotPasswordMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof platformAuthForgotPassword>>,
+    TError,
+    { data: BodyType<PlatformAuthForgotPasswordBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof platformAuthForgotPassword>>,
+  TError,
+  { data: BodyType<PlatformAuthForgotPasswordBody> },
+  TContext
+> => {
+  const mutationKey = ["platformAuthForgotPassword"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof platformAuthForgotPassword>>,
+    { data: BodyType<PlatformAuthForgotPasswordBody> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return platformAuthForgotPassword(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type PlatformAuthForgotPasswordMutationResult = NonNullable<
+  Awaited<ReturnType<typeof platformAuthForgotPassword>>
+>;
+export type PlatformAuthForgotPasswordMutationBody =
+  BodyType<PlatformAuthForgotPasswordBody>;
+export type PlatformAuthForgotPasswordMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Request a password-reset code (always generic success)
+ */
+export const usePlatformAuthForgotPassword = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof platformAuthForgotPassword>>,
+    TError,
+    { data: BodyType<PlatformAuthForgotPasswordBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof platformAuthForgotPassword>>,
+  TError,
+  { data: BodyType<PlatformAuthForgotPasswordBody> },
+  TContext
+> => {
+  return useMutation(getPlatformAuthForgotPasswordMutationOptions(options));
+};
+
+/**
+ * @summary Reset a password with a one-time code (single-use)
+ */
+export const getPlatformAuthResetPasswordUrl = () => {
+  return `/api/platform/auth/reset-password`;
+};
+
+export const platformAuthResetPassword = async (
+  platformAuthResetPasswordBody: PlatformAuthResetPasswordBody,
+  options?: RequestInit,
+): Promise<PlatformAuthResetPassword200> => {
+  return customFetch<PlatformAuthResetPassword200>(
+    getPlatformAuthResetPasswordUrl(),
+    {
+      ...options,
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...options?.headers },
+      body: JSON.stringify(platformAuthResetPasswordBody),
+    },
+  );
+};
+
+export const getPlatformAuthResetPasswordMutationOptions = <
+  TError = ErrorType<ContactApiError>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof platformAuthResetPassword>>,
+    TError,
+    { data: BodyType<PlatformAuthResetPasswordBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof platformAuthResetPassword>>,
+  TError,
+  { data: BodyType<PlatformAuthResetPasswordBody> },
+  TContext
+> => {
+  const mutationKey = ["platformAuthResetPassword"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof platformAuthResetPassword>>,
+    { data: BodyType<PlatformAuthResetPasswordBody> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return platformAuthResetPassword(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type PlatformAuthResetPasswordMutationResult = NonNullable<
+  Awaited<ReturnType<typeof platformAuthResetPassword>>
+>;
+export type PlatformAuthResetPasswordMutationBody =
+  BodyType<PlatformAuthResetPasswordBody>;
+export type PlatformAuthResetPasswordMutationError = ErrorType<ContactApiError>;
+
+/**
+ * @summary Reset a password with a one-time code (single-use)
+ */
+export const usePlatformAuthResetPassword = <
+  TError = ErrorType<ContactApiError>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof platformAuthResetPassword>>,
+    TError,
+    { data: BodyType<PlatformAuthResetPasswordBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof platformAuthResetPassword>>,
+  TError,
+  { data: BodyType<PlatformAuthResetPasswordBody> },
+  TContext
+> => {
+  return useMutation(getPlatformAuthResetPasswordMutationOptions(options));
+};
+
+/**
+ * Requires the first-party `ctx_auth_session` cookie (or bearer token) and
+returns the active session inventory for the current account. The
+`current` field identifies the session resolved from the cookie/token on
+this request.
+
+ * @summary List active sessions for the current account
+ */
+export const getPlatformAuthListSessionsUrl = () => {
+  return `/api/platform/auth/sessions`;
+};
+
+export const platformAuthListSessions = async (
+  options?: RequestInit,
+): Promise<PlatformAuthSessionsResponse> => {
+  return customFetch<PlatformAuthSessionsResponse>(
+    getPlatformAuthListSessionsUrl(),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getPlatformAuthListSessionsQueryKey = () => {
+  return [`/api/platform/auth/sessions`] as const;
+};
+
+export const getPlatformAuthListSessionsQueryOptions = <
+  TData = Awaited<ReturnType<typeof platformAuthListSessions>>,
+  TError = ErrorType<UnauthorizedResponse>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof platformAuthListSessions>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getPlatformAuthListSessionsQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof platformAuthListSessions>>
+  > = ({ signal }) => platformAuthListSessions({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof platformAuthListSessions>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type PlatformAuthListSessionsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof platformAuthListSessions>>
+>;
+export type PlatformAuthListSessionsQueryError =
+  ErrorType<UnauthorizedResponse>;
+
+/**
+ * @summary List active sessions for the current account
+ */
+
+export function usePlatformAuthListSessions<
+  TData = Awaited<ReturnType<typeof platformAuthListSessions>>,
+  TError = ErrorType<UnauthorizedResponse>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof platformAuthListSessions>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getPlatformAuthListSessionsQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * Requires the first-party `ctx_auth_session` cookie (or bearer token) and
+revokes the selected session for the current account. If the selected
+session is the one backing the current `ctx_auth_session`, the response
+also clears that cookie.
+
+ * @summary Revoke one active session
+ */
+export const getPlatformAuthRevokeSessionUrl = (id: string) => {
+  return `/api/platform/auth/sessions/${id}`;
+};
+
+export const platformAuthRevokeSession = async (
+  id: string,
+  options?: RequestInit,
+): Promise<void> => {
+  return customFetch<void>(getPlatformAuthRevokeSessionUrl(id), {
+    ...options,
+    method: "DELETE",
+  });
+};
+
+export const getPlatformAuthRevokeSessionMutationOptions = <
+  TError = ErrorType<UnauthorizedResponse | NotFoundResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof platformAuthRevokeSession>>,
+    TError,
+    { id: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof platformAuthRevokeSession>>,
+  TError,
+  { id: string },
+  TContext
+> => {
+  const mutationKey = ["platformAuthRevokeSession"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof platformAuthRevokeSession>>,
+    { id: string }
+  > = (props) => {
+    const { id } = props ?? {};
+
+    return platformAuthRevokeSession(id, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type PlatformAuthRevokeSessionMutationResult = NonNullable<
+  Awaited<ReturnType<typeof platformAuthRevokeSession>>
+>;
+
+export type PlatformAuthRevokeSessionMutationError = ErrorType<
+  UnauthorizedResponse | NotFoundResponse
+>;
+
+/**
+ * @summary Revoke one active session
+ */
+export const usePlatformAuthRevokeSession = <
+  TError = ErrorType<UnauthorizedResponse | NotFoundResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof platformAuthRevokeSession>>,
+    TError,
+    { id: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof platformAuthRevokeSession>>,
+  TError,
+  { id: string },
+  TContext
+> => {
+  return useMutation(getPlatformAuthRevokeSessionMutationOptions(options));
+};
+
+/**
+ * Public first-party verification endpoint. Confirms the one-time email
+challenge and does not set or require the `ctx_auth_session` cookie.
+
+ * @summary Confirm an email verification challenge
+ */
+export const getPlatformAuthVerifyEmailUrl = () => {
+  return `/api/platform/auth/verify-email`;
+};
+
+export const platformAuthVerifyEmail = async (
+  platformAuthVerifyEmailRequest: PlatformAuthVerifyEmailRequest,
+  options?: RequestInit,
+): Promise<PlatformAuthVerifiedResponse> => {
+  return customFetch<PlatformAuthVerifiedResponse>(
+    getPlatformAuthVerifyEmailUrl(),
+    {
+      ...options,
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...options?.headers },
+      body: JSON.stringify(platformAuthVerifyEmailRequest),
+    },
+  );
+};
+
+export const getPlatformAuthVerifyEmailMutationOptions = <
+  TError = ErrorType<ContactApiError | RateLimitedResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof platformAuthVerifyEmail>>,
+    TError,
+    { data: BodyType<PlatformAuthVerifyEmailRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof platformAuthVerifyEmail>>,
+  TError,
+  { data: BodyType<PlatformAuthVerifyEmailRequest> },
+  TContext
+> => {
+  const mutationKey = ["platformAuthVerifyEmail"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof platformAuthVerifyEmail>>,
+    { data: BodyType<PlatformAuthVerifyEmailRequest> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return platformAuthVerifyEmail(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type PlatformAuthVerifyEmailMutationResult = NonNullable<
+  Awaited<ReturnType<typeof platformAuthVerifyEmail>>
+>;
+export type PlatformAuthVerifyEmailMutationBody =
+  BodyType<PlatformAuthVerifyEmailRequest>;
+export type PlatformAuthVerifyEmailMutationError = ErrorType<
+  ContactApiError | RateLimitedResponse
+>;
+
+/**
+ * @summary Confirm an email verification challenge
+ */
+export const usePlatformAuthVerifyEmail = <
+  TError = ErrorType<ContactApiError | RateLimitedResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof platformAuthVerifyEmail>>,
+    TError,
+    { data: BodyType<PlatformAuthVerifyEmailRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof platformAuthVerifyEmail>>,
+  TError,
+  { data: BodyType<PlatformAuthVerifyEmailRequest> },
+  TContext
+> => {
+  return useMutation(getPlatformAuthVerifyEmailMutationOptions(options));
+};
+
+/**
+ * Requires the first-party `ctx_auth_session` cookie (or bearer token).
+On success all sessions for the account are revoked, including the
+current session, and the `ctx_auth_session` cookie is cleared so the
+client must authenticate again.
+
+ * @summary Change the current account password
+ */
+export const getPlatformAuthChangePasswordUrl = () => {
+  return `/api/platform/auth/change-password`;
+};
+
+export const platformAuthChangePassword = async (
+  platformAuthChangePasswordRequest: PlatformAuthChangePasswordRequest,
+  options?: RequestInit,
+): Promise<PlatformAuthChangePasswordResponse> => {
+  return customFetch<PlatformAuthChangePasswordResponse>(
+    getPlatformAuthChangePasswordUrl(),
+    {
+      ...options,
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...options?.headers },
+      body: JSON.stringify(platformAuthChangePasswordRequest),
+    },
+  );
+};
+
+export const getPlatformAuthChangePasswordMutationOptions = <
+  TError = ErrorType<
+    ContactApiError | UnauthorizedResponse | RateLimitedResponse
+  >,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof platformAuthChangePassword>>,
+    TError,
+    { data: BodyType<PlatformAuthChangePasswordRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof platformAuthChangePassword>>,
+  TError,
+  { data: BodyType<PlatformAuthChangePasswordRequest> },
+  TContext
+> => {
+  const mutationKey = ["platformAuthChangePassword"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof platformAuthChangePassword>>,
+    { data: BodyType<PlatformAuthChangePasswordRequest> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return platformAuthChangePassword(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type PlatformAuthChangePasswordMutationResult = NonNullable<
+  Awaited<ReturnType<typeof platformAuthChangePassword>>
+>;
+export type PlatformAuthChangePasswordMutationBody =
+  BodyType<PlatformAuthChangePasswordRequest>;
+export type PlatformAuthChangePasswordMutationError = ErrorType<
+  ContactApiError | UnauthorizedResponse | RateLimitedResponse
+>;
+
+/**
+ * @summary Change the current account password
+ */
+export const usePlatformAuthChangePassword = <
+  TError = ErrorType<
+    ContactApiError | UnauthorizedResponse | RateLimitedResponse
+  >,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof platformAuthChangePassword>>,
+    TError,
+    { data: BodyType<PlatformAuthChangePasswordRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof platformAuthChangePassword>>,
+  TError,
+  { data: BodyType<PlatformAuthChangePasswordRequest> },
+  TContext
+> => {
+  return useMutation(getPlatformAuthChangePasswordMutationOptions(options));
+};
+
+/**
+ * Requires the first-party `ctx_auth_session` cookie (or bearer token).
+Returns an `otpauthUri` for the current account; confirm enrollment with
+`POST /platform/auth/mfa/confirm`.
+
+ * @summary Start TOTP MFA enrollment
+ */
+export const getPlatformAuthMfaEnrollUrl = () => {
+  return `/api/platform/auth/mfa/enroll`;
+};
+
+export const platformAuthMfaEnroll = async (
+  options?: RequestInit,
+): Promise<PlatformAuthMfaEnrollResponse> => {
+  return customFetch<PlatformAuthMfaEnrollResponse>(
+    getPlatformAuthMfaEnrollUrl(),
+    {
+      ...options,
+      method: "POST",
+    },
+  );
+};
+
+export const getPlatformAuthMfaEnrollMutationOptions = <
+  TError = ErrorType<
+    ContactApiError | UnauthorizedResponse | RateLimitedResponse
+  >,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof platformAuthMfaEnroll>>,
+    TError,
+    void,
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof platformAuthMfaEnroll>>,
+  TError,
+  void,
+  TContext
+> => {
+  const mutationKey = ["platformAuthMfaEnroll"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof platformAuthMfaEnroll>>,
+    void
+  > = () => {
+    return platformAuthMfaEnroll(requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type PlatformAuthMfaEnrollMutationResult = NonNullable<
+  Awaited<ReturnType<typeof platformAuthMfaEnroll>>
+>;
+
+export type PlatformAuthMfaEnrollMutationError = ErrorType<
+  ContactApiError | UnauthorizedResponse | RateLimitedResponse
+>;
+
+/**
+ * @summary Start TOTP MFA enrollment
+ */
+export const usePlatformAuthMfaEnroll = <
+  TError = ErrorType<
+    ContactApiError | UnauthorizedResponse | RateLimitedResponse
+  >,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof platformAuthMfaEnroll>>,
+    TError,
+    void,
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof platformAuthMfaEnroll>>,
+  TError,
+  void,
+  TContext
+> => {
+  return useMutation(getPlatformAuthMfaEnrollMutationOptions(options));
+};
+
+/**
+ * Requires the first-party `ctx_auth_session` cookie (or bearer token) and
+verifies the code generated from the pending TOTP enrollment for the
+current account.
+
+ * @summary Confirm pending TOTP MFA enrollment
+ */
+export const getPlatformAuthMfaConfirmUrl = () => {
+  return `/api/platform/auth/mfa/confirm`;
+};
+
+export const platformAuthMfaConfirm = async (
+  platformAuthMfaConfirmRequest: PlatformAuthMfaConfirmRequest,
+  options?: RequestInit,
+): Promise<CrmOkResponse> => {
+  return customFetch<CrmOkResponse>(getPlatformAuthMfaConfirmUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(platformAuthMfaConfirmRequest),
+  });
+};
+
+export const getPlatformAuthMfaConfirmMutationOptions = <
+  TError = ErrorType<
+    ContactApiError | UnauthorizedResponse | RateLimitedResponse
+  >,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof platformAuthMfaConfirm>>,
+    TError,
+    { data: BodyType<PlatformAuthMfaConfirmRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof platformAuthMfaConfirm>>,
+  TError,
+  { data: BodyType<PlatformAuthMfaConfirmRequest> },
+  TContext
+> => {
+  const mutationKey = ["platformAuthMfaConfirm"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof platformAuthMfaConfirm>>,
+    { data: BodyType<PlatformAuthMfaConfirmRequest> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return platformAuthMfaConfirm(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type PlatformAuthMfaConfirmMutationResult = NonNullable<
+  Awaited<ReturnType<typeof platformAuthMfaConfirm>>
+>;
+export type PlatformAuthMfaConfirmMutationBody =
+  BodyType<PlatformAuthMfaConfirmRequest>;
+export type PlatformAuthMfaConfirmMutationError = ErrorType<
+  ContactApiError | UnauthorizedResponse | RateLimitedResponse
+>;
+
+/**
+ * @summary Confirm pending TOTP MFA enrollment
+ */
+export const usePlatformAuthMfaConfirm = <
+  TError = ErrorType<
+    ContactApiError | UnauthorizedResponse | RateLimitedResponse
+  >,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof platformAuthMfaConfirm>>,
+    TError,
+    { data: BodyType<PlatformAuthMfaConfirmRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof platformAuthMfaConfirm>>,
+  TError,
+  { data: BodyType<PlatformAuthMfaConfirmRequest> },
+  TContext
+> => {
+  return useMutation(getPlatformAuthMfaConfirmMutationOptions(options));
+};
+
+/**
+ * Requires the first-party `ctx_auth_session` cookie (or bearer token).
+Generates a fresh set of one-time recovery codes for the current account.
+
+ * @summary Generate MFA recovery codes
+ */
+export const getPlatformAuthMfaRecoveryCodesUrl = () => {
+  return `/api/platform/auth/mfa/recovery-codes`;
+};
+
+export const platformAuthMfaRecoveryCodes = async (
+  options?: RequestInit,
+): Promise<PlatformAuthRecoveryCodesResponse> => {
+  return customFetch<PlatformAuthRecoveryCodesResponse>(
+    getPlatformAuthMfaRecoveryCodesUrl(),
+    {
+      ...options,
+      method: "POST",
+    },
+  );
+};
+
+export const getPlatformAuthMfaRecoveryCodesMutationOptions = <
+  TError = ErrorType<
+    | ContactApiError
+    | UnauthorizedResponse
+    | ForbiddenResponse
+    | RateLimitedResponse
+  >,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof platformAuthMfaRecoveryCodes>>,
+    TError,
+    void,
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof platformAuthMfaRecoveryCodes>>,
+  TError,
+  void,
+  TContext
+> => {
+  const mutationKey = ["platformAuthMfaRecoveryCodes"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof platformAuthMfaRecoveryCodes>>,
+    void
+  > = () => {
+    return platformAuthMfaRecoveryCodes(requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type PlatformAuthMfaRecoveryCodesMutationResult = NonNullable<
+  Awaited<ReturnType<typeof platformAuthMfaRecoveryCodes>>
+>;
+
+export type PlatformAuthMfaRecoveryCodesMutationError = ErrorType<
+  | ContactApiError
+  | UnauthorizedResponse
+  | ForbiddenResponse
+  | RateLimitedResponse
+>;
+
+/**
+ * @summary Generate MFA recovery codes
+ */
+export const usePlatformAuthMfaRecoveryCodes = <
+  TError = ErrorType<
+    | ContactApiError
+    | UnauthorizedResponse
+    | ForbiddenResponse
+    | RateLimitedResponse
+  >,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof platformAuthMfaRecoveryCodes>>,
+    TError,
+    void,
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof platformAuthMfaRecoveryCodes>>,
+  TError,
+  void,
+  TContext
+> => {
+  return useMutation(getPlatformAuthMfaRecoveryCodesMutationOptions(options));
+};
+
+/**
+ * Public first-party invitation acceptance endpoint. A valid invite token
+provisions the account, links the staff row, issues a session, and sets
+the HttpOnly `ctx_auth_session` cookie.
+
+ * @summary Accept a staff invitation and create a password
+ */
+export const getPlatformAuthInviteAcceptUrl = () => {
+  return `/api/platform/auth/invite/accept`;
+};
+
+export const platformAuthInviteAccept = async (
+  platformAuthInviteAcceptRequest: PlatformAuthInviteAcceptRequest,
+  options?: RequestInit,
+): Promise<PlatformAuthInviteAcceptResponse> => {
+  return customFetch<PlatformAuthInviteAcceptResponse>(
+    getPlatformAuthInviteAcceptUrl(),
+    {
+      ...options,
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...options?.headers },
+      body: JSON.stringify(platformAuthInviteAcceptRequest),
+    },
+  );
+};
+
+export const getPlatformAuthInviteAcceptMutationOptions = <
+  TError = ErrorType<ContactApiError | RateLimitedResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof platformAuthInviteAccept>>,
+    TError,
+    { data: BodyType<PlatformAuthInviteAcceptRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof platformAuthInviteAccept>>,
+  TError,
+  { data: BodyType<PlatformAuthInviteAcceptRequest> },
+  TContext
+> => {
+  const mutationKey = ["platformAuthInviteAccept"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof platformAuthInviteAccept>>,
+    { data: BodyType<PlatformAuthInviteAcceptRequest> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return platformAuthInviteAccept(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type PlatformAuthInviteAcceptMutationResult = NonNullable<
+  Awaited<ReturnType<typeof platformAuthInviteAccept>>
+>;
+export type PlatformAuthInviteAcceptMutationBody =
+  BodyType<PlatformAuthInviteAcceptRequest>;
+export type PlatformAuthInviteAcceptMutationError = ErrorType<
+  ContactApiError | RateLimitedResponse
+>;
+
+/**
+ * @summary Accept a staff invitation and create a password
+ */
+export const usePlatformAuthInviteAccept = <
+  TError = ErrorType<ContactApiError | RateLimitedResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof platformAuthInviteAccept>>,
+    TError,
+    { data: BodyType<PlatformAuthInviteAcceptRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof platformAuthInviteAccept>>,
+  TError,
+  { data: BodyType<PlatformAuthInviteAcceptRequest> },
+  TContext
+> => {
+  return useMutation(getPlatformAuthInviteAcceptMutationOptions(options));
+};
+
+/**
+ * Public first-party bootstrap endpoint guarded by a single-use bootstrap
+token. When no staff exists, it provisions the owner account, consumes
+the token, issues a session, and sets the HttpOnly `ctx_auth_session`
+cookie.
+
+ * @summary Bootstrap the first platform owner
+ */
+export const getPlatformAuthBootstrapUrl = () => {
+  return `/api/platform/auth/bootstrap`;
+};
+
+export const platformAuthBootstrap = async (
+  platformAuthBootstrapRequest: PlatformAuthBootstrapRequest,
+  options?: RequestInit,
+): Promise<PlatformAuthInviteAcceptResponse> => {
+  return customFetch<PlatformAuthInviteAcceptResponse>(
+    getPlatformAuthBootstrapUrl(),
+    {
+      ...options,
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...options?.headers },
+      body: JSON.stringify(platformAuthBootstrapRequest),
+    },
+  );
+};
+
+export const getPlatformAuthBootstrapMutationOptions = <
+  TError = ErrorType<ContactApiError | RateLimitedResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof platformAuthBootstrap>>,
+    TError,
+    { data: BodyType<PlatformAuthBootstrapRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof platformAuthBootstrap>>,
+  TError,
+  { data: BodyType<PlatformAuthBootstrapRequest> },
+  TContext
+> => {
+  const mutationKey = ["platformAuthBootstrap"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof platformAuthBootstrap>>,
+    { data: BodyType<PlatformAuthBootstrapRequest> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return platformAuthBootstrap(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type PlatformAuthBootstrapMutationResult = NonNullable<
+  Awaited<ReturnType<typeof platformAuthBootstrap>>
+>;
+export type PlatformAuthBootstrapMutationBody =
+  BodyType<PlatformAuthBootstrapRequest>;
+export type PlatformAuthBootstrapMutationError = ErrorType<
+  ContactApiError | RateLimitedResponse
+>;
+
+/**
+ * @summary Bootstrap the first platform owner
+ */
+export const usePlatformAuthBootstrap = <
+  TError = ErrorType<ContactApiError | RateLimitedResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof platformAuthBootstrap>>,
+    TError,
+    { data: BodyType<PlatformAuthBootstrapRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof platformAuthBootstrap>>,
+  TError,
+  { data: BodyType<PlatformAuthBootstrapRequest> },
+  TContext
+> => {
+  return useMutation(getPlatformAuthBootstrapMutationOptions(options));
 };
 
 /**

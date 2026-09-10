@@ -8,10 +8,12 @@ Operations. Paths are relative to the same `/api` server as `openapi.yaml`.
 **Auth**
 - Public `/contact/*` form endpoints are unauthenticated.
 - Inbound webhooks use `X-Webhook-Secret`.
-- Platform routes accept Clerk `Authorization: Bearer` **or** the
-  `ctx_platform_session` cookie (local/dev bridge). `POST /platform/auth/login`
-  is disabled in production (HTTP 410) unless an explicit non-prod override
-  is set.
+- Platform (and Handler) routes use first-party ClaimTagX auth: the
+  `ctx_auth_session` cookie (an opaque session/refresh token) **or** an
+  opaque `Authorization: Bearer` token. No hosted identity provider is used.
+  Sign in via `POST /platform/auth/login` (email + password); MFA, password
+  reset, invitation acceptance and first-owner bootstrap are also
+  first-party endpoints under `/platform/auth/*`.
 
 **Permissions**
 Platform operations declare `x-permission` matching `PLATFORM_PERMISSIONS`
@@ -333,13 +335,20 @@ export interface WebhookMatchResponse {
 export interface PlatformLoginRequest {
   email: string;
   /**
-   * @minLength 8
-   * @maxLength 200
+   * @minLength 1
+   * @maxLength 1024
    */
-  accessKey: string;
-  /** @maxLength 120 */
-  name?: string;
+  password: string;
 }
+
+export type PlatformLoginResponseMethodsItem =
+  (typeof PlatformLoginResponseMethodsItem)[keyof typeof PlatformLoginResponseMethodsItem];
+
+export const PlatformLoginResponseMethodsItem = {
+  totp: "totp",
+  sms: "sms",
+  recovery: "recovery",
+} as const;
 
 export interface PlatformStaffSession {
   id: string;
@@ -349,10 +358,123 @@ export interface PlatformStaffSession {
   permissions: CrmPlatformPermission[];
 }
 
-export interface CrmStaff {
+/**
+ * Login outcome. On full success `authenticated` is true and the session cookie is set. `staff` is present when the account is linked to a CRM staff row (null for handler-only accounts). When a second factor is required, `mfaRequired` is true and the client must call `POST /platform/auth/mfa/challenge`.
+
+ */
+export interface PlatformLoginResponse {
+  authenticated?: boolean;
+  accountId?: string;
+  /** Opaque bearer access token for non-browser clients. */
+  accessToken?: string;
+  accessExpiresAt?: number;
+  staff?: PlatformStaffSession | null;
+  mfaRequired?: boolean;
+  methods?: PlatformLoginResponseMethodsItem[];
+  verificationRequired?: boolean;
+  challengeId?: string;
+}
+
+export interface PlatformAuthSessionRecord {
   id: string;
   /** @nullable */
-  clerkUserId?: string | null;
+  deviceId?: string | null;
+  issuedAt: string;
+  expiresAt: string;
+  current: boolean;
+}
+
+export interface PlatformAuthSessionsResponse {
+  /** @nullable */
+  current: string | null;
+  sessions: PlatformAuthSessionRecord[];
+}
+
+export interface PlatformAuthVerifyEmailRequest {
+  challengeId: string;
+  code: string;
+}
+
+export const PlatformAuthVerifiedResponseValue = {
+  verified: true,
+} as const;
+export type PlatformAuthVerifiedResponse =
+  typeof PlatformAuthVerifiedResponseValue;
+
+export interface PlatformAuthChangePasswordRequest {
+  /**
+   * @minLength 1
+   * @maxLength 1024
+   */
+  currentPassword: string;
+  /**
+   * @minLength 1
+   * @maxLength 1024
+   */
+  newPassword: string;
+}
+
+export const PlatformAuthChangePasswordResponseValue = {
+  ok: true,
+  reauthenticate: true,
+} as const;
+export type PlatformAuthChangePasswordResponse =
+  typeof PlatformAuthChangePasswordResponseValue;
+
+export interface PlatformAuthMfaEnrollResponse {
+  otpauthUri: string;
+}
+
+export interface PlatformAuthMfaConfirmRequest {
+  code: string;
+}
+
+export interface PlatformAuthRecoveryCodesResponse {
+  codes: string[];
+}
+
+export interface PlatformAuthInviteAcceptRequest {
+  /**
+   * @minLength 16
+   * @maxLength 400
+   */
+  token: string;
+  /**
+   * @minLength 1
+   * @maxLength 1024
+   */
+  password: string;
+  /** @maxLength 120 */
+  name?: string;
+}
+
+export interface PlatformAuthInviteAcceptResponse {
+  authenticated: true;
+  staff: PlatformStaffSession;
+}
+
+export interface PlatformAuthBootstrapRequest {
+  /**
+   * @minLength 16
+   * @maxLength 400
+   */
+  token: string;
+  /** @maxLength 254 */
+  email: string;
+  /**
+   * @minLength 1
+   * @maxLength 1024
+   */
+  password: string;
+}
+
+export interface CrmStaff {
+  id: string;
+  /**
+   * First-party auth account id linked to this staff row.
+   * @nullable
+   */
+  authAccountId?: string | null;
   email: string;
   emailNormalized: string;
   name: string;
@@ -1630,6 +1752,52 @@ export type XContactWebhookGetParams = {
 export type XContactWebhookGet200 = { [key: string]: unknown };
 
 export type XContactWebhookBody = { [key: string]: unknown };
+
+export type PlatformAuthMfaChallengeBodyMethod =
+  (typeof PlatformAuthMfaChallengeBodyMethod)[keyof typeof PlatformAuthMfaChallengeBodyMethod];
+
+export const PlatformAuthMfaChallengeBodyMethod = {
+  totp: "totp",
+  sms: "sms",
+  recovery: "recovery",
+} as const;
+
+export type PlatformAuthMfaChallengeBody = {
+  accountId: string;
+  method?: PlatformAuthMfaChallengeBodyMethod;
+  code: string;
+};
+
+export type PlatformAuthSession200 = {
+  accountId?: string;
+  /** @nullable */
+  email?: string | null;
+  /** @nullable */
+  sessionId?: string | null;
+  staff?: PlatformStaffSession | null;
+};
+
+export type PlatformAuthForgotPasswordBody = {
+  email: string;
+};
+
+export type PlatformAuthForgotPassword200 = {
+  ok?: boolean;
+};
+
+export type PlatformAuthResetPasswordBody = {
+  challengeId: string;
+  code: string;
+  /**
+   * @minLength 1
+   * @maxLength 1024
+   */
+  newPassword: string;
+};
+
+export type PlatformAuthResetPassword200 = {
+  ok?: boolean;
+};
 
 export type ListPlatformContactChannels200 = { [key: string]: unknown };
 

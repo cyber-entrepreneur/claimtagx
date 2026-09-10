@@ -9,10 +9,12 @@ info:
     **Auth**
     - Public `/contact/*` form endpoints are unauthenticated.
     - Inbound webhooks use `X-Webhook-Secret`.
-    - Platform routes accept Clerk `Authorization: Bearer` **or** the
-      `ctx_platform_session` cookie (local/dev bridge). `POST /platform/auth/login`
-      is disabled in production (HTTP 410) unless an explicit non-prod override
-      is set.
+    - Platform (and Handler) routes use first-party ClaimTagX auth: the
+      `ctx_auth_session` cookie (an opaque session/refresh token) **or** an
+      opaque `Authorization: Bearer` token. No hosted identity provider is used.
+      Sign in via `POST /platform/auth/login` (email + password); MFA, password
+      reset, invitation acceptance and first-owner bootstrap are also
+      first-party endpoints under `/platform/auth/*`.
 
     **Permissions**
     Platform operations declare `x-permission` matching `PLATFORM_PERMISSIONS`
@@ -31,7 +33,7 @@ tags:
   - name: contact-webhooks
     description: Provider webhooks (inbound email, scheduling)
   - name: platform-auth
-    description: Platform staff identity (Clerk + optional cookie session)
+    description: First-party platform/handler identity (password, MFA, session cookie)
   - name: platform-inquiries
     description: Inbox, workspace, and inquiry mutations
   - name: platform-templates
@@ -439,11 +441,13 @@ paths:
     post:
       operationId: platformAuthLogin
       tags: [platform-auth]
-      summary: Dev-only shared access-key login
+      summary: First-party email + password login
       description: |
-        Mints `ctx_platform_session` after validating `PLATFORM_STAFF_ACCESS_KEY`.
-        Returns **410** unless `PLATFORM_ALLOW_ACCESS_KEY_LOGIN=true` and
-        `NODE_ENV` is not `production`. Production staff must use Clerk.
+        Authenticates against the first-party ClaimTagX auth platform. On full
+        success sets the `ctx_auth_session` cookie and (for CRM accounts) links
+        the staff row. Errors are intentionally generic to avoid account
+        enumeration. When MFA is required, returns `mfaRequired: true` +
+        `accountId`; complete via `POST /platform/auth/mfa/challenge`.
       x-status: implemented
       security: []
       requestBody:
@@ -454,36 +458,61 @@ paths:
               $ref: "#/components/schemas/PlatformLoginRequest"
       responses:
         "200":
-          description: "Staff session established (Set-Cookie `ctx_platform_session`)"
+          description: "Authenticated, MFA required, or verification required."
           headers:
             Set-Cookie:
               schema:
                 type: string
-              description: "HttpOnly `ctx_platform_session` cookie (7-day expiry)"
+              description: "HttpOnly `ctx_auth_session` cookie (set only on full success)"
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/PlatformStaffSession"
-        "400":
-          description: Email or access key missing
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ContactApiError"
+                $ref: "#/components/schemas/PlatformLoginResponse"
         "401":
-          description: Invalid access key
+          description: Invalid email or password (generic)
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ContactApiError"
-        "403":
-          description: Email is not authorized for Platform Admin
+        "429":
+          description: Too many attempts (rate limited)
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ContactApiError"
-        "410":
-          description: Shared access-key login is disabled
+
+  /platform/auth/mfa/challenge:
+    post:
+      operationId: platformAuthMfaChallenge
+      tags: [platform-auth]
+      summary: Submit the second factor after an mfa_required login
+      x-status: implemented
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                accountId:
+                  type: string
+                method:
+                  type: string
+                  enum: [totp, sms, recovery]
+                  default: totp
+                code:
+                  type: string
+              required: [accountId, code]
+      responses:
+        "200":
+          description: "Authenticated (Set-Cookie `ctx_auth_session`)"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlatformLoginResponse"
+        "401":
+          description: Invalid code (generic)
           content:
             application/json:
               schema:
@@ -493,12 +522,528 @@ paths:
     post:
       operationId: platformAuthLogout
       tags: [platform-auth]
-      summary: Clear the platform staff session cookie
+      summary: Revoke the current session and clear the cookie
       x-status: implemented
-      security: []
+      security:
+        - sessionCookie: []
+        - bearerToken: []
       responses:
         "204":
-          description: Cookie cleared
+          description: Session revoked and cookie cleared
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /platform/auth/logout-all:
+    post:
+      operationId: platformAuthLogoutAll
+      tags: [platform-auth]
+      summary: Revoke every session for the current account
+      x-status: implemented
+      security:
+        - sessionCookie: []
+        - bearerToken: []
+      responses:
+        "204":
+          description: All sessions revoked and cookie cleared
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /platform/auth/session:
+    get:
+      operationId: platformAuthSession
+      tags: [platform-auth]
+      summary: Resolve the current first-party session identity
+      x-status: implemented
+      security:
+        - sessionCookie: []
+        - bearerToken: []
+      responses:
+        "200":
+          description: Account id, email, and linked staff (if any)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  accountId:
+                    type: string
+                  email:
+                    type: ["string", "null"]
+                  sessionId:
+                    type: ["string", "null"]
+                  staff:
+                    oneOf:
+                      - $ref: "#/components/schemas/PlatformStaffSession"
+                      - type: "null"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /platform/auth/forgot-password:
+    post:
+      operationId: platformAuthForgotPassword
+      tags: [platform-auth]
+      summary: Request a password-reset code (always generic success)
+      description: |
+        Always returns `{ ok: true }` regardless of whether the account exists,
+        to prevent account enumeration. If the account exists, a one-time reset
+        code is emailed.
+      x-status: implemented
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email:
+                  type: string
+                  format: email
+              required: [email]
+      responses:
+        "200":
+          description: Generic acknowledgement
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+
+  /platform/auth/reset-password:
+    post:
+      operationId: platformAuthResetPassword
+      tags: [platform-auth]
+      summary: Reset a password with a one-time code (single-use)
+      x-status: implemented
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                challengeId:
+                  type: string
+                code:
+                  type: string
+                newPassword:
+                  type: string
+                  minLength: 1
+                  maxLength: 1024
+              required: [challengeId, code, newPassword]
+      responses:
+        "200":
+          description: Password reset
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+        "400":
+          description: Invalid/expired code or weak password (generic)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ContactApiError"
+
+  /platform/auth/sessions:
+    get:
+      operationId: platformAuthListSessions
+      tags: [platform-auth]
+      summary: List active sessions for the current account
+      description: |
+        Requires the first-party `ctx_auth_session` cookie (or bearer token) and
+        returns the active session inventory for the current account. The
+        `current` field identifies the session resolved from the cookie/token on
+        this request.
+      x-status: implemented
+      security:
+        - sessionCookie: []
+        - bearerToken: []
+      responses:
+        "200":
+          description: Active session inventory for the current account
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlatformAuthSessionsResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /platform/auth/sessions/{id}:
+    delete:
+      operationId: platformAuthRevokeSession
+      tags: [platform-auth]
+      summary: Revoke one active session
+      description: |
+        Requires the first-party `ctx_auth_session` cookie (or bearer token) and
+        revokes the selected session for the current account. If the selected
+        session is the one backing the current `ctx_auth_session`, the response
+        also clears that cookie.
+      x-status: implemented
+      security:
+        - sessionCookie: []
+        - bearerToken: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Session revoked; current cookie cleared when applicable
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /platform/auth/verify-email:
+    post:
+      operationId: platformAuthVerifyEmail
+      tags: [platform-auth]
+      summary: Confirm an email verification challenge
+      description: |
+        Public first-party verification endpoint. Confirms the one-time email
+        challenge and does not set or require the `ctx_auth_session` cookie.
+      x-status: implemented
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PlatformAuthVerifyEmailRequest"
+      responses:
+        "200":
+          description: Email challenge verified
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlatformAuthVerifiedResponse"
+        "400":
+          description: Invalid or expired verification code
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ContactApiError"
+        "410":
+          description: Verification challenge has expired or was already consumed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ContactApiError"
+        "422":
+          description: Verification payload is not usable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ContactApiError"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /platform/auth/change-password:
+    post:
+      operationId: platformAuthChangePassword
+      tags: [platform-auth]
+      summary: Change the current account password
+      description: |
+        Requires the first-party `ctx_auth_session` cookie (or bearer token).
+        On success all sessions for the account are revoked, including the
+        current session, and the `ctx_auth_session` cookie is cleared so the
+        client must authenticate again.
+      x-status: implemented
+      security:
+        - sessionCookie: []
+        - bearerToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PlatformAuthChangePasswordRequest"
+      responses:
+        "200":
+          description: Password changed; all sessions revoked
+          headers:
+            Set-Cookie:
+              schema:
+                type: string
+              description: Expired `ctx_auth_session` cookie
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlatformAuthChangePasswordResponse"
+        "400":
+          description: Missing password, weak password, or incorrect current password
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ContactApiError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "422":
+          description: Password payload is not usable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ContactApiError"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /platform/auth/mfa/enroll:
+    post:
+      operationId: platformAuthMfaEnroll
+      tags: [platform-auth]
+      summary: Start TOTP MFA enrollment
+      description: |
+        Requires the first-party `ctx_auth_session` cookie (or bearer token).
+        Returns an `otpauthUri` for the current account; confirm enrollment with
+        `POST /platform/auth/mfa/confirm`.
+      x-status: implemented
+      security:
+        - sessionCookie: []
+        - bearerToken: []
+      responses:
+        "200":
+          description: TOTP enrollment started
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlatformAuthMfaEnrollResponse"
+        "400":
+          description: Unable to start MFA enrollment
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ContactApiError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          description: MFA enrollment is already active or pending
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ContactApiError"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /platform/auth/mfa/confirm:
+    post:
+      operationId: platformAuthMfaConfirm
+      tags: [platform-auth]
+      summary: Confirm pending TOTP MFA enrollment
+      description: |
+        Requires the first-party `ctx_auth_session` cookie (or bearer token) and
+        verifies the code generated from the pending TOTP enrollment for the
+        current account.
+      x-status: implemented
+      security:
+        - sessionCookie: []
+        - bearerToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PlatformAuthMfaConfirmRequest"
+      responses:
+        "200":
+          description: MFA enrollment confirmed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CrmOkResponse"
+        "400":
+          description: Verification code is missing or invalid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ContactApiError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "410":
+          description: Pending MFA enrollment expired or was already consumed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ContactApiError"
+        "422":
+          description: MFA confirmation payload is not usable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ContactApiError"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /platform/auth/mfa/recovery-codes:
+    post:
+      operationId: platformAuthMfaRecoveryCodes
+      tags: [platform-auth]
+      summary: Generate MFA recovery codes
+      description: |
+        Requires the first-party `ctx_auth_session` cookie (or bearer token).
+        Generates a fresh set of one-time recovery codes for the current account.
+      x-status: implemented
+      security:
+        - sessionCookie: []
+        - bearerToken: []
+      responses:
+        "200":
+          description: Fresh recovery codes
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlatformAuthRecoveryCodesResponse"
+        "400":
+          description: Unable to generate recovery codes
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ContactApiError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          description: MFA must be enabled before recovery codes can be generated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ContactApiError"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /platform/auth/invite/accept:
+    post:
+      operationId: platformAuthInviteAccept
+      tags: [platform-auth]
+      summary: Accept a staff invitation and create a password
+      description: |
+        Public first-party invitation acceptance endpoint. A valid invite token
+        provisions the account, links the staff row, issues a session, and sets
+        the HttpOnly `ctx_auth_session` cookie.
+      x-status: implemented
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PlatformAuthInviteAcceptRequest"
+      responses:
+        "201":
+          description: Invitation accepted and session cookie set
+          headers:
+            Set-Cookie:
+              schema:
+                type: string
+              description: HttpOnly `ctx_auth_session` cookie
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlatformAuthInviteAcceptResponse"
+        "400":
+          description: Invalid token, expired token, weak password, or invalid payload
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ContactApiError"
+        "403":
+          description: Invite email is not authorized for Platform Admin
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ContactApiError"
+        "409":
+          description: Account is already registered
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ContactApiError"
+        "410":
+          description: Invitation has expired or was already accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ContactApiError"
+        "422":
+          description: Invitation acceptance payload is not usable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ContactApiError"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /platform/auth/bootstrap:
+    post:
+      operationId: platformAuthBootstrap
+      tags: [platform-auth]
+      summary: Bootstrap the first platform owner
+      description: |
+        Public first-party bootstrap endpoint guarded by a single-use bootstrap
+        token. When no staff exists, it provisions the owner account, consumes
+        the token, issues a session, and sets the HttpOnly `ctx_auth_session`
+        cookie.
+      x-status: implemented
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PlatformAuthBootstrapRequest"
+      responses:
+        "201":
+          description: Owner bootstrapped and session cookie set
+          headers:
+            Set-Cookie:
+              schema:
+                type: string
+              description: HttpOnly `ctx_auth_session` cookie
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlatformAuthInviteAcceptResponse"
+        "400":
+          description: Invalid payload, weak password, or provisioning failure
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ContactApiError"
+        "401":
+          description: Invalid or expired bootstrap token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ContactApiError"
+        "409":
+          description: Bootstrap is closed or the token was already consumed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ContactApiError"
+        "410":
+          description: Bootstrap token expired or already consumed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ContactApiError"
+        "422":
+          description: Bootstrap payload is not usable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ContactApiError"
+        "429":
+          $ref: "#/components/responses/RateLimited"
 
   /platform/me:
     get:
@@ -507,8 +1052,8 @@ paths:
       summary: Current authenticated platform staff
       x-status: implemented
       security:
-        - clerkBearer: []
-        - platformCookie: []
+        - sessionCookie: []
+        - bearerToken: []
       responses:
         "200":
           description: Staff identity and granted permissions
@@ -531,8 +1076,8 @@ paths:
       x-status: implemented
       x-permission: inquiries.view
       security:
-        - clerkBearer: []
-        - platformCookie: []
+        - sessionCookie: []
+        - bearerToken: []
       responses:
         "200":
           description: Channel rows and quarantine count
@@ -554,8 +1099,8 @@ paths:
       x-status: implemented
       x-permission: channels.manage
       security:
-        - clerkBearer: []
-        - platformCookie: []
+        - sessionCookie: []
+        - bearerToken: []
       responses:
         "200":
           description: Refreshed channel rows
@@ -577,8 +1122,8 @@ paths:
       x-status: implemented
       x-permission: inquiries.view
       security:
-        - clerkBearer: []
-        - platformCookie: []
+        - sessionCookie: []
+        - bearerToken: []
       parameters:
         - in: query
           name: contactId
@@ -607,8 +1152,8 @@ paths:
       x-status: implemented
       x-permission: inquiries.assign
       security:
-        - clerkBearer: []
-        - platformCookie: []
+        - sessionCookie: []
+        - bearerToken: []
       parameters:
         - in: path
           name: id
@@ -639,8 +1184,8 @@ paths:
       x-status: implemented
       x-permission: inquiries.assign
       security:
-        - clerkBearer: []
-        - platformCookie: []
+        - sessionCookie: []
+        - bearerToken: []
       parameters:
         - in: path
           name: id
@@ -662,8 +1207,8 @@ paths:
       x-status: implemented
       x-permission: inquiries.reply
       security:
-        - clerkBearer: []
-        - platformCookie: []
+        - sessionCookie: []
+        - bearerToken: []
       parameters:
         - in: path
           name: id
@@ -692,8 +1237,8 @@ paths:
       x-status: implemented
       x-permission: inquiries.view
       security:
-        - clerkBearer: []
-        - platformCookie: []
+        - sessionCookie: []
+        - bearerToken: []
       responses:
         "200":
           description: Staff and team rows
@@ -718,8 +1263,8 @@ paths:
       x-status: implemented
       x-permission: inquiries.view
       security:
-        - clerkBearer: []
-        - platformCookie: []
+        - sessionCookie: []
+        - bearerToken: []
       parameters:
         - $ref: "#/components/parameters/PageLimit"
         - $ref: "#/components/parameters/PageOffset"
@@ -817,8 +1362,8 @@ paths:
       x-status: implemented
       x-permission: inquiries.view
       security:
-        - clerkBearer: []
-        - platformCookie: []
+        - sessionCookie: []
+        - bearerToken: []
       requestBody:
         required: true
         content:
@@ -849,8 +1394,8 @@ paths:
       x-status: implemented
       x-permission: inquiries.view
       security:
-        - clerkBearer: []
-        - platformCookie: []
+        - sessionCookie: []
+        - bearerToken: []
       parameters:
         - $ref: "#/components/parameters/InquiryId"
       responses:
@@ -875,8 +1420,8 @@ paths:
       x-status: implemented
       x-permission: inquiries.view
       security:
-        - clerkBearer: []
-        - platformCookie: []
+        - sessionCookie: []
+        - bearerToken: []
       parameters:
         - $ref: "#/components/parameters/InquiryId"
       requestBody:
@@ -906,8 +1451,8 @@ paths:
       x-status: implemented
       x-permission: inquiries.reply
       security:
-        - clerkBearer: []
-        - platformCookie: []
+        - sessionCookie: []
+        - bearerToken: []
       parameters:
         - $ref: "#/components/parameters/InquiryId"
       requestBody:
@@ -938,8 +1483,8 @@ paths:
       x-status: implemented
       x-permission: inquiries.note
       security:
-        - clerkBearer: []
-        - platformCookie: []
+        - sessionCookie: []
+        - bearerToken: []
       parameters:
         - $ref: "#/components/parameters/InquiryId"
       requestBody:
@@ -968,8 +1513,8 @@ paths:
       x-status: implemented
       x-permission: inquiries.forward
       security:
-        - clerkBearer: []
-        - platformCookie: []
+        - sessionCookie: []
+        - bearerToken: []
       parameters:
         - $ref: "#/components/parameters/InquiryId"
       requestBody:
@@ -1000,8 +1545,8 @@ paths:
       x-status: implemented
       x-permission: inquiries.assign
       security:
-        - clerkBearer: []
-        - platformCookie: []
+        - sessionCookie: []
+        - bearerToken: []
       parameters:
         - $ref: "#/components/parameters/InquiryId"
       requestBody:
@@ -1030,8 +1575,8 @@ paths:
       x-status: implemented
       x-permission: inquiries.status
       security:
-        - clerkBearer: []
-        - platformCookie: []
+        - sessionCookie: []
+        - bearerToken: []
       parameters:
         - $ref: "#/components/parameters/InquiryId"
       requestBody:
@@ -1060,8 +1605,8 @@ paths:
       x-status: implemented
       x-permission: inquiries.priority
       security:
-        - clerkBearer: []
-        - platformCookie: []
+        - sessionCookie: []
+        - bearerToken: []
       parameters:
         - $ref: "#/components/parameters/InquiryId"
       requestBody:
@@ -1090,8 +1635,8 @@ paths:
       x-status: implemented
       x-permission: inquiries.tags
       security:
-        - clerkBearer: []
-        - platformCookie: []
+        - sessionCookie: []
+        - bearerToken: []
       parameters:
         - $ref: "#/components/parameters/InquiryId"
       requestBody:
@@ -1120,8 +1665,8 @@ paths:
       x-status: implemented
       x-permission: inquiries.qualification.override
       security:
-        - clerkBearer: []
-        - platformCookie: []
+        - sessionCookie: []
+        - bearerToken: []
       parameters:
         - $ref: "#/components/parameters/InquiryId"
       requestBody:
@@ -1150,8 +1695,8 @@ paths:
       x-status: implemented
       x-permission: inquiries.reply
       security:
-        - clerkBearer: []
-        - platformCookie: []
+        - sessionCookie: []
+        - bearerToken: []
       parameters:
         - $ref: "#/components/parameters/InquiryId"
       responses:
@@ -1174,8 +1719,8 @@ paths:
       x-status: implemented
       x-permission: inquiries.qualification.override
       security:
-        - clerkBearer: []
-        - platformCookie: []
+        - sessionCookie: []
+        - bearerToken: []
       parameters:
         - $ref: "#/components/parameters/InquiryId"
       requestBody:
@@ -1208,8 +1753,8 @@ paths:
       x-status: implemented
       x-permission: inquiries.reply
       security:
-        - clerkBearer: []
-        - platformCookie: []
+        - sessionCookie: []
+        - bearerToken: []
       parameters:
         - $ref: "#/components/parameters/InquiryId"
         - in: path
@@ -1240,8 +1785,8 @@ paths:
       x-status: implemented
       x-permission: inquiries.view
       security:
-        - clerkBearer: []
-        - platformCookie: []
+        - sessionCookie: []
+        - bearerToken: []
       responses:
         "200":
           description: Templates plus version rows
@@ -1260,8 +1805,8 @@ paths:
       x-status: implemented
       x-permission: templates.manage
       security:
-        - clerkBearer: []
-        - platformCookie: []
+        - sessionCookie: []
+        - bearerToken: []
       requestBody:
         required: true
         content:
@@ -1288,8 +1833,8 @@ paths:
       x-status: implemented
       x-permission: templates.manage
       security:
-        - clerkBearer: []
-        - platformCookie: []
+        - sessionCookie: []
+        - bearerToken: []
       parameters:
         - $ref: "#/components/parameters/TemplateId"
       responses:
@@ -1312,8 +1857,8 @@ paths:
       x-status: implemented
       x-permission: templates.manage
       security:
-        - clerkBearer: []
-        - platformCookie: []
+        - sessionCookie: []
+        - bearerToken: []
       parameters:
         - $ref: "#/components/parameters/TemplateId"
       requestBody:
@@ -1342,8 +1887,8 @@ paths:
       x-status: implemented
       x-permission: inquiries.view
       security:
-        - clerkBearer: []
-        - platformCookie: []
+        - sessionCookie: []
+        - bearerToken: []
       responses:
         "200":
           description: Config snapshot
@@ -1364,8 +1909,8 @@ paths:
       x-status: implemented
       x-permission: config.manage
       security:
-        - clerkBearer: []
-        - platformCookie: []
+        - sessionCookie: []
+        - bearerToken: []
       parameters:
         - $ref: "#/components/parameters/TaxonomyId"
       requestBody:
@@ -1396,8 +1941,8 @@ paths:
       x-status: implemented
       x-permission: config.manage
       security:
-        - clerkBearer: []
-        - platformCookie: []
+        - sessionCookie: []
+        - bearerToken: []
       parameters:
         - $ref: "#/components/parameters/ModelId"
       requestBody:
@@ -1428,8 +1973,8 @@ paths:
       x-status: implemented
       x-permission: workflows.manage
       security:
-        - clerkBearer: []
-        - platformCookie: []
+        - sessionCookie: []
+        - bearerToken: []
       parameters:
         - $ref: "#/components/parameters/WorkflowId"
       requestBody:
@@ -1458,8 +2003,8 @@ paths:
       x-status: implemented
       x-permission: routing.manage
       security:
-        - clerkBearer: []
-        - platformCookie: []
+        - sessionCookie: []
+        - bearerToken: []
       parameters:
         - $ref: "#/components/parameters/RoutingId"
       requestBody:
@@ -1488,8 +2033,8 @@ paths:
       x-status: implemented
       x-permission: sla.manage
       security:
-        - clerkBearer: []
-        - platformCookie: []
+        - sessionCookie: []
+        - bearerToken: []
       parameters:
         - $ref: "#/components/parameters/SlaPolicyId"
       requestBody:
@@ -1518,8 +2063,8 @@ paths:
       x-status: implemented
       x-permission: meetings.manage
       security:
-        - clerkBearer: []
-        - platformCookie: []
+        - sessionCookie: []
+        - bearerToken: []
       parameters:
         - $ref: "#/components/parameters/MeetingTypeId"
       requestBody:
@@ -1548,8 +2093,8 @@ paths:
       x-status: implemented
       x-permission: config.propose
       security:
-        - clerkBearer: []
-        - platformCookie: []
+        - sessionCookie: []
+        - bearerToken: []
       parameters:
         - name: id
           in: path
@@ -1583,8 +2128,8 @@ paths:
       x-status: implemented
       x-permission: config.propose
       security:
-        - clerkBearer: []
-        - platformCookie: []
+        - sessionCookie: []
+        - bearerToken: []
       parameters:
         - name: id
           in: path
@@ -1618,8 +2163,8 @@ paths:
       x-status: implemented
       x-permission: config.propose
       security:
-        - clerkBearer: []
-        - platformCookie: []
+        - sessionCookie: []
+        - bearerToken: []
       requestBody:
         required: true
         content:
@@ -1646,8 +2191,8 @@ paths:
       x-status: implemented
       x-permission: config.propose
       security:
-        - clerkBearer: []
-        - platformCookie: []
+        - sessionCookie: []
+        - bearerToken: []
       requestBody:
         required: true
         content:
@@ -1678,8 +2223,8 @@ paths:
       x-status: implemented
       x-permission: config.propose
       security:
-        - clerkBearer: []
-        - platformCookie: []
+        - sessionCookie: []
+        - bearerToken: []
       requestBody:
         required: true
         content:
@@ -1710,8 +2255,8 @@ paths:
       x-status: implemented
       x-permission: config.propose
       security:
-        - clerkBearer: []
-        - platformCookie: []
+        - sessionCookie: []
+        - bearerToken: []
       requestBody:
         required: true
         content:
@@ -1742,8 +2287,8 @@ paths:
       x-status: implemented
       x-permission: inquiries.status
       security:
-        - clerkBearer: []
-        - platformCookie: []
+        - sessionCookie: []
+        - bearerToken: []
       parameters:
         - $ref: "#/components/parameters/InquiryId"
       responses:
@@ -1762,8 +2307,8 @@ paths:
       x-status: implemented
       x-permission: inquiries.status
       security:
-        - clerkBearer: []
-        - platformCookie: []
+        - sessionCookie: []
+        - bearerToken: []
       parameters:
         - $ref: "#/components/parameters/InquiryId"
       responses:
@@ -1782,8 +2327,8 @@ paths:
       x-status: implemented
       x-permission: inquiries.delete
       security:
-        - clerkBearer: []
-        - platformCookie: []
+        - sessionCookie: []
+        - bearerToken: []
       requestBody:
         required: true
         content:
@@ -1810,8 +2355,8 @@ paths:
       x-status: implemented
       x-permission: inquiries.view
       security:
-        - clerkBearer: []
-        - platformCookie: []
+        - sessionCookie: []
+        - bearerToken: []
       parameters:
         - in: query
           name: email
@@ -1843,8 +2388,8 @@ paths:
       x-status: implemented
       x-permission: jobs.inspect
       security:
-        - clerkBearer: []
-        - platformCookie: []
+        - sessionCookie: []
+        - bearerToken: []
       responses:
         "200":
           description: Job rows
@@ -1861,8 +2406,8 @@ paths:
       x-status: implemented
       x-permission: jobs.inspect
       security:
-        - clerkBearer: []
-        - platformCookie: []
+        - sessionCookie: []
+        - bearerToken: []
       parameters:
         - in: query
           name: q
@@ -1892,8 +2437,8 @@ paths:
       x-status: implemented
       x-permission: jobs.replay
       security:
-        - clerkBearer: []
-        - platformCookie: []
+        - sessionCookie: []
+        - bearerToken: []
       parameters:
         - in: path
           name: id
@@ -1936,8 +2481,8 @@ paths:
       x-status: implemented
       x-permission: jobs.inspect
       security:
-        - clerkBearer: []
-        - platformCookie: []
+        - sessionCookie: []
+        - bearerToken: []
       parameters:
         - in: query
           name: status
@@ -1967,8 +2512,8 @@ paths:
       x-status: implemented
       x-permission: jobs.inspect
       security:
-        - clerkBearer: []
-        - platformCookie: []
+        - sessionCookie: []
+        - bearerToken: []
       parameters:
         - in: path
           name: key
@@ -2003,8 +2548,8 @@ paths:
       x-status: implemented
       x-permission: jobs.replay
       security:
-        - clerkBearer: []
-        - platformCookie: []
+        - sessionCookie: []
+        - bearerToken: []
       parameters:
         - in: path
           name: key
@@ -2036,8 +2581,8 @@ paths:
       x-status: implemented
       x-permission: jobs.replay
       security:
-        - clerkBearer: []
-        - platformCookie: []
+        - sessionCookie: []
+        - bearerToken: []
       parameters:
         - in: path
           name: key
@@ -2066,8 +2611,8 @@ paths:
       x-status: implemented
       x-permission: jobs.inspect
       security:
-        - clerkBearer: []
-        - platformCookie: []
+        - sessionCookie: []
+        - bearerToken: []
       responses:
         "200":
           description: Receipts
@@ -2080,8 +2625,8 @@ paths:
       x-status: implemented
       x-permission: privacy.dsar
       security:
-        - clerkBearer: []
-        - platformCookie: []
+        - sessionCookie: []
+        - bearerToken: []
       responses:
         "200":
           description: DSAR rows
@@ -2092,8 +2637,8 @@ paths:
       x-status: implemented
       x-permission: privacy.dsar
       security:
-        - clerkBearer: []
-        - platformCookie: []
+        - sessionCookie: []
+        - bearerToken: []
       requestBody:
         required: true
         content:
@@ -2118,8 +2663,8 @@ paths:
       x-status: implemented
       x-permission: privacy.dsar
       security:
-        - clerkBearer: []
-        - platformCookie: []
+        - sessionCookie: []
+        - bearerToken: []
       parameters:
         - in: path
           name: id
@@ -2150,8 +2695,8 @@ paths:
       x-status: implemented
       x-permission: privacy.dsar
       security:
-        - clerkBearer: []
-        - platformCookie: []
+        - sessionCookie: []
+        - bearerToken: []
       parameters:
         - in: path
           name: id
@@ -2169,8 +2714,8 @@ paths:
       x-status: implemented
       x-permission: privacy.dsar
       security:
-        - clerkBearer: []
-        - platformCookie: []
+        - sessionCookie: []
+        - bearerToken: []
       parameters:
         - in: path
           name: id
@@ -2211,8 +2756,8 @@ paths:
       x-status: implemented
       x-permission: privacy.dsar
       security:
-        - clerkBearer: []
-        - platformCookie: []
+        - sessionCookie: []
+        - bearerToken: []
       parameters:
         - in: path
           name: id
@@ -2245,8 +2790,8 @@ paths:
       x-status: implemented
       x-permission: privacy.dsar
       security:
-        - clerkBearer: []
-        - platformCookie: []
+        - sessionCookie: []
+        - bearerToken: []
       parameters:
         - in: path
           name: id
@@ -2287,8 +2832,8 @@ paths:
       x-status: implemented
       x-permission: attachments.manage
       security:
-        - clerkBearer: []
-        - platformCookie: []
+        - sessionCookie: []
+        - bearerToken: []
       parameters:
         - in: query
           name: status
@@ -2314,8 +2859,8 @@ paths:
       x-status: implemented
       x-permission: attachments.manage
       security:
-        - clerkBearer: []
-        - platformCookie: []
+        - sessionCookie: []
+        - bearerToken: []
       requestBody:
         required: true
         content:
@@ -2344,8 +2889,8 @@ paths:
       x-status: implemented
       x-permission: attachments.manage
       security:
-        - clerkBearer: []
-        - platformCookie: []
+        - sessionCookie: []
+        - bearerToken: []
       parameters:
         - in: path
           name: id
@@ -2390,8 +2935,8 @@ paths:
       x-status: implemented
       x-permission: opportunities.convert
       security:
-        - clerkBearer: []
-        - platformCookie: []
+        - sessionCookie: []
+        - bearerToken: []
       parameters:
         - in: path
           name: id
@@ -2446,8 +2991,8 @@ paths:
       x-status: implemented
       x-permission: inquiries.view
       security:
-        - clerkBearer: []
-        - platformCookie: []
+        - sessionCookie: []
+        - bearerToken: []
       responses:
         "200":
           description: Newest-first notifications
@@ -2470,8 +3015,8 @@ paths:
       x-status: implemented
       x-permission: inquiries.view
       security:
-        - clerkBearer: []
-        - platformCookie: []
+        - sessionCookie: []
+        - bearerToken: []
       responses:
         "200":
           description: Saved views
@@ -2492,8 +3037,8 @@ paths:
       x-status: implemented
       x-permission: inquiries.view
       security:
-        - clerkBearer: []
-        - platformCookie: []
+        - sessionCookie: []
+        - bearerToken: []
       requestBody:
         required: true
         content:
@@ -2521,8 +3066,8 @@ paths:
       x-status: implemented
       x-permission: inquiries.view
       security:
-        - clerkBearer: []
-        - platformCookie: []
+        - sessionCookie: []
+        - bearerToken: []
       parameters:
         - $ref: "#/components/parameters/SavedViewId"
       responses:
@@ -2546,8 +3091,8 @@ paths:
       x-status: implemented
       x-permission: inquiries.view
       security:
-        - clerkBearer: []
-        - platformCookie: []
+        - sessionCookie: []
+        - bearerToken: []
       parameters:
         - $ref: "#/components/parameters/SavedViewId"
       requestBody:
@@ -2580,8 +3125,8 @@ paths:
       x-status: implemented
       x-permission: inquiries.view
       security:
-        - clerkBearer: []
-        - platformCookie: []
+        - sessionCookie: []
+        - bearerToken: []
       parameters:
         - $ref: "#/components/parameters/SavedViewId"
       responses:
@@ -2602,8 +3147,8 @@ paths:
       x-status: implemented
       x-permission: analytics.view
       security:
-        - clerkBearer: []
-        - platformCookie: []
+        - sessionCookie: []
+        - bearerToken: []
       parameters:
         - name: from
           in: query
@@ -2637,8 +3182,8 @@ paths:
       x-status: implemented
       x-permission: inquiries.assign
       security:
-        - clerkBearer: []
-        - platformCookie: []
+        - sessionCookie: []
+        - bearerToken: []
       requestBody:
         required: true
         content:
@@ -2672,8 +3217,8 @@ paths:
       x-status: implemented
       x-permission: inquiries.status
       security:
-        - clerkBearer: []
-        - platformCookie: []
+        - sessionCookie: []
+        - bearerToken: []
       requestBody:
         required: true
         content:
@@ -2707,8 +3252,8 @@ paths:
       x-status: implemented
       x-permission: config.manage
       security:
-        - clerkBearer: []
-        - platformCookie: []
+        - sessionCookie: []
+        - bearerToken: []
       parameters:
         - in: query
           name: entityType
@@ -2731,8 +3276,8 @@ paths:
       x-status: implemented
       x-permission: config.propose
       security:
-        - clerkBearer: []
-        - platformCookie: []
+        - sessionCookie: []
+        - bearerToken: []
       requestBody:
         required: true
         content:
@@ -2761,8 +3306,8 @@ paths:
       x-status: implemented
       x-permission: config.manage
       security:
-        - clerkBearer: []
-        - platformCookie: []
+        - sessionCookie: []
+        - bearerToken: []
       parameters:
         - in: path
           name: id
@@ -2813,8 +3358,8 @@ paths:
       x-status: implemented
       x-permission: config.manage
       security:
-        - clerkBearer: []
-        - platformCookie: []
+        - sessionCookie: []
+        - bearerToken: []
       parameters:
         - in: path
           name: eventId
@@ -2836,8 +3381,8 @@ paths:
       x-status: implemented
       x-permission: inquiries.export
       security:
-        - clerkBearer: []
-        - platformCookie: []
+        - sessionCookie: []
+        - bearerToken: []
       requestBody:
         required: true
         content:
@@ -2865,8 +3410,8 @@ paths:
       x-status: implemented
       x-permission: config.manage
       security:
-        - clerkBearer: []
-        - platformCookie: []
+        - sessionCookie: []
+        - bearerToken: []
       requestBody:
         required: true
         content:
@@ -2894,8 +3439,8 @@ paths:
       x-status: implemented
       x-permission: config.manage
       security:
-        - clerkBearer: []
-        - platformCookie: []
+        - sessionCookie: []
+        - bearerToken: []
       parameters:
         - in: path
           name: id
@@ -2926,8 +3471,8 @@ paths:
       x-status: implemented
       x-permission: config.manage
       security:
-        - clerkBearer: []
-        - platformCookie: []
+        - sessionCookie: []
+        - bearerToken: []
       responses:
         "200":
           description: Retention run result
@@ -2953,8 +3498,8 @@ paths:
       x-status: implemented
       x-permission: inquiries.delete
       security:
-        - clerkBearer: []
-        - platformCookie: []
+        - sessionCookie: []
+        - bearerToken: []
       responses:
         "200":
           description: Anonymized
@@ -2971,8 +3516,8 @@ paths:
       x-status: implemented
       x-permission: inquiries.export
       security:
-        - clerkBearer: []
-        - platformCookie: []
+        - sessionCookie: []
+        - bearerToken: []
       responses:
         "201":
           description: Correction requested
@@ -2989,8 +3534,8 @@ paths:
       x-status: implemented
       x-permission: config.manage
       security:
-        - clerkBearer: []
-        - platformCookie: []
+        - sessionCookie: []
+        - bearerToken: []
       requestBody:
         required: true
         content:
@@ -3021,8 +3566,8 @@ paths:
       x-status: implemented
       x-permission: inquiries.view
       security:
-        - clerkBearer: []
-        - platformCookie: []
+        - sessionCookie: []
+        - bearerToken: []
       parameters:
         - $ref: "#/components/parameters/PageLimit"
         - in: query
@@ -3055,8 +3600,8 @@ paths:
       x-status: implemented
       x-permission: inquiries.export
       security:
-        - clerkBearer: []
-        - platformCookie: []
+        - sessionCookie: []
+        - bearerToken: []
       parameters:
         - $ref: "#/components/parameters/ContactId"
         - $ref: "#/components/parameters/IdempotencyKeyHeader"
@@ -3082,8 +3627,8 @@ paths:
       x-status: implemented
       x-permission: inquiries.export
       security:
-        - clerkBearer: []
-        - platformCookie: []
+        - sessionCookie: []
+        - bearerToken: []
       parameters:
         - in: path
           name: exportId
@@ -3113,8 +3658,8 @@ paths:
       x-status: implemented
       x-permission: inquiries.view
       security:
-        - clerkBearer: []
-        - platformCookie: []
+        - sessionCookie: []
+        - bearerToken: []
       parameters:
         - in: query
           name: entityType
@@ -3149,8 +3694,8 @@ paths:
       x-status: implemented
       x-permission: inquiries.view
       security:
-        - clerkBearer: []
-        - platformCookie: []
+        - sessionCookie: []
+        - bearerToken: []
       requestBody:
         required: true
         content:
@@ -3186,8 +3731,8 @@ paths:
       x-status: implemented
       x-permission: inquiries.view
       security:
-        - clerkBearer: []
-        - platformCookie: []
+        - sessionCookie: []
+        - bearerToken: []
       requestBody:
         required: true
         content:
@@ -3224,8 +3769,8 @@ paths:
       x-status: implemented
       x-permission: inquiries.view
       security:
-        - clerkBearer: []
-        - platformCookie: []
+        - sessionCookie: []
+        - bearerToken: []
       parameters:
         - $ref: "#/components/parameters/RecordLockId"
       responses:
@@ -3256,8 +3801,8 @@ paths:
       x-status: implemented
       x-permission: inquiries.view
       security:
-        - clerkBearer: []
-        - platformCookie: []
+        - sessionCookie: []
+        - bearerToken: []
       parameters:
         - $ref: "#/components/parameters/RecordLockId"
       responses:
@@ -3283,8 +3828,8 @@ paths:
       x-status: implemented
       x-permission: inquiries.view
       security:
-        - clerkBearer: []
-        - platformCookie: []
+        - sessionCookie: []
+        - bearerToken: []
       parameters:
         - $ref: "#/components/parameters/RecordLockId"
       requestBody:
@@ -3328,8 +3873,8 @@ paths:
       x-status: implemented
       x-permission: inquiries.export
       security:
-        - clerkBearer: []
-        - platformCookie: []
+        - sessionCookie: []
+        - bearerToken: []
       requestBody:
         required: false
         content:
@@ -3362,8 +3907,8 @@ paths:
       x-status: implemented
       x-permission: inquiries.export
       security:
-        - clerkBearer: []
-        - platformCookie: []
+        - sessionCookie: []
+        - bearerToken: []
       parameters:
         - in: query
           name: limit
@@ -3396,8 +3941,8 @@ paths:
       x-status: implemented
       x-permission: inquiries.export
       security:
-        - clerkBearer: []
-        - platformCookie: []
+        - sessionCookie: []
+        - bearerToken: []
       parameters:
         - $ref: "#/components/parameters/ExportJobId"
       responses:
@@ -3428,8 +3973,8 @@ paths:
       x-status: implemented
       x-permission: inquiries.export
       security:
-        - clerkBearer: []
-        - platformCookie: []
+        - sessionCookie: []
+        - bearerToken: []
       parameters:
         - $ref: "#/components/parameters/ExportJobId"
       responses:
@@ -3462,8 +4007,8 @@ paths:
       x-status: implemented
       x-permission: inquiries.export
       security:
-        - clerkBearer: []
-        - platformCookie: []
+        - sessionCookie: []
+        - bearerToken: []
       parameters:
         - $ref: "#/components/parameters/ExportJobId"
       responses:
@@ -3493,8 +4038,8 @@ paths:
       x-status: implemented
       x-permission: marketing.read
       security:
-        - clerkBearer: []
-        - platformCookie: []
+        - sessionCookie: []
+        - bearerToken: []
       responses:
         "200":
           description: Document list
@@ -3513,8 +4058,8 @@ paths:
       x-status: implemented
       x-permission: marketing.propose
       security:
-        - clerkBearer: []
-        - platformCookie: []
+        - sessionCookie: []
+        - bearerToken: []
       requestBody:
         required: true
         content:
@@ -3543,8 +4088,8 @@ paths:
       x-status: implemented
       x-permission: marketing.read
       security:
-        - clerkBearer: []
-        - platformCookie: []
+        - sessionCookie: []
+        - bearerToken: []
       parameters:
         - in: path
           name: slug
@@ -3573,8 +4118,8 @@ paths:
       x-status: implemented
       x-permission: marketing.read
       security:
-        - clerkBearer: []
-        - platformCookie: []
+        - sessionCookie: []
+        - bearerToken: []
       parameters:
         - in: path
           name: slug
@@ -3603,8 +4148,8 @@ paths:
       x-status: implemented
       x-permission: marketing.read
       security:
-        - clerkBearer: []
-        - platformCookie: []
+        - sessionCookie: []
+        - bearerToken: []
       parameters:
         - $ref: "#/components/parameters/MarketingVersionId"
       responses:
@@ -3627,8 +4172,8 @@ paths:
       x-status: implemented
       x-permission: marketing.propose
       security:
-        - clerkBearer: []
-        - platformCookie: []
+        - sessionCookie: []
+        - bearerToken: []
       parameters:
         - $ref: "#/components/parameters/MarketingVersionId"
       requestBody:
@@ -3663,8 +4208,8 @@ paths:
       x-status: implemented
       x-permission: marketing.read
       security:
-        - clerkBearer: []
-        - platformCookie: []
+        - sessionCookie: []
+        - bearerToken: []
       parameters:
         - $ref: "#/components/parameters/MarketingVersionId"
       responses:
@@ -3689,8 +4234,8 @@ paths:
       x-status: implemented
       x-permission: marketing.read
       security:
-        - clerkBearer: []
-        - platformCookie: []
+        - sessionCookie: []
+        - bearerToken: []
       parameters:
         - in: path
           name: leftId
@@ -3730,8 +4275,8 @@ paths:
         prevents author self-approve and self-publish. Optimistic concurrency via
         expectedLockVersion.
       security:
-        - clerkBearer: []
-        - platformCookie: []
+        - sessionCookie: []
+        - bearerToken: []
       parameters:
         - $ref: "#/components/parameters/MarketingVersionId"
       requestBody:
@@ -3766,8 +4311,8 @@ paths:
       x-status: implemented
       x-permission: marketing.read
       security:
-        - clerkBearer: []
-        - platformCookie: []
+        - sessionCookie: []
+        - bearerToken: []
       parameters:
         - $ref: "#/components/parameters/MarketingVersionId"
       responses:
@@ -3799,8 +4344,8 @@ paths:
       x-status: implemented
       x-permission: marketing.publish
       security:
-        - clerkBearer: []
-        - platformCookie: []
+        - sessionCookie: []
+        - bearerToken: []
       parameters:
         - $ref: "#/components/parameters/MarketingVersionId"
       requestBody:
@@ -3843,8 +4388,8 @@ paths:
       x-status: implemented
       x-permission: marketing.propose
       security:
-        - clerkBearer: []
-        - platformCookie: []
+        - sessionCookie: []
+        - bearerToken: []
       parameters:
         - $ref: "#/components/parameters/MarketingVersionId"
       responses:
@@ -3865,16 +4410,24 @@ paths:
 
 components:
   securitySchemes:
-    clerkBearer:
-      type: http
-      scheme: bearer
-      bearerFormat: JWT
-      description: "Clerk session JWT (`Authorization: Bearer`). Preferred for production."
-    platformCookie:
+    sessionCookie:
       type: apiKey
       in: cookie
-      name: ctx_platform_session
-      description: HMAC staff session cookie used as a local/dev bridge.
+      name: ctx_auth_session
+      description: >
+        First-party opaque session cookie (`ctx_auth_session`). HttpOnly, Secure,
+        `SameSite=None` in production (so the SPA on a different origin can send it
+        cross-site), `path=/`. Its value is an opaque refresh token backed by the
+        first-party auth platform; only its hash is persisted server-side.
+        Cookie-bearing writes are additionally protected by an Origin allow-list
+        (CSRF) check.
+    bearerToken:
+      type: http
+      scheme: bearer
+      description: >
+        First-party opaque access token (or refresh token) via
+        `Authorization: Bearer`. Used by non-browser/API clients. Tokens are
+        opaque (not JWTs); only their hashes are stored.
     webhookSecret:
       type: apiKey
       in: header
@@ -4413,14 +4966,168 @@ components:
         email:
           type: string
           format: email
-        accessKey:
+        password:
           type: string
-          minLength: 8
-          maxLength: 200
+          minLength: 1
+          maxLength: 1024
+      required: [email, password]
+    PlatformLoginResponse:
+      type: object
+      description: >
+        Login outcome. On full success `authenticated` is true and the session
+        cookie is set. `staff` is present when the account is linked to a CRM
+        staff row (null for handler-only accounts). When a second factor is
+        required, `mfaRequired` is true and the client must call
+        `POST /platform/auth/mfa/challenge`.
+      properties:
+        authenticated:
+          type: boolean
+        accountId:
+          type: string
+        accessToken:
+          type: string
+          description: Opaque bearer access token for non-browser clients.
+        accessExpiresAt:
+          type: integer
+          format: int64
+        staff:
+          oneOf:
+            - $ref: "#/components/schemas/PlatformStaffSession"
+            - type: "null"
+        mfaRequired:
+          type: boolean
+        methods:
+          type: array
+          items:
+            type: string
+            enum: [totp, sms, recovery]
+        verificationRequired:
+          type: boolean
+        challengeId:
+          type: string
+    PlatformAuthSessionRecord:
+      type: object
+      properties:
+        id:
+          type: string
+        deviceId:
+          type: ["string", "null"]
+        issuedAt:
+          type: string
+          format: date-time
+        expiresAt:
+          type: string
+          format: date-time
+        current:
+          type: boolean
+      required: [id, issuedAt, expiresAt, current]
+    PlatformAuthSessionsResponse:
+      type: object
+      properties:
+        current:
+          type: ["string", "null"]
+        sessions:
+          type: array
+          items:
+            $ref: "#/components/schemas/PlatformAuthSessionRecord"
+      required: [current, sessions]
+    PlatformAuthVerifyEmailRequest:
+      type: object
+      properties:
+        challengeId:
+          type: string
+        code:
+          type: string
+      required: [challengeId, code]
+    PlatformAuthVerifiedResponse:
+      type: object
+      properties:
+        verified:
+          type: boolean
+          const: true
+      required: [verified]
+    PlatformAuthChangePasswordRequest:
+      type: object
+      properties:
+        currentPassword:
+          type: string
+          minLength: 1
+          maxLength: 1024
+        newPassword:
+          type: string
+          minLength: 1
+          maxLength: 1024
+      required: [currentPassword, newPassword]
+    PlatformAuthChangePasswordResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+          const: true
+        reauthenticate:
+          type: boolean
+          const: true
+      required: [ok, reauthenticate]
+    PlatformAuthMfaEnrollResponse:
+      type: object
+      properties:
+        otpauthUri:
+          type: string
+      required: [otpauthUri]
+    PlatformAuthMfaConfirmRequest:
+      type: object
+      properties:
+        code:
+          type: string
+      required: [code]
+    PlatformAuthRecoveryCodesResponse:
+      type: object
+      properties:
+        codes:
+          type: array
+          items:
+            type: string
+      required: [codes]
+    PlatformAuthInviteAcceptRequest:
+      type: object
+      properties:
+        token:
+          type: string
+          minLength: 16
+          maxLength: 400
+        password:
+          type: string
+          minLength: 1
+          maxLength: 1024
         name:
           type: string
           maxLength: 120
-      required: [email, accessKey]
+      required: [token, password]
+    PlatformAuthInviteAcceptResponse:
+      type: object
+      properties:
+        authenticated:
+          type: boolean
+          const: true
+        staff:
+          $ref: "#/components/schemas/PlatformStaffSession"
+      required: [authenticated, staff]
+    PlatformAuthBootstrapRequest:
+      type: object
+      properties:
+        token:
+          type: string
+          minLength: 16
+          maxLength: 400
+        email:
+          type: string
+          format: email
+          maxLength: 254
+        password:
+          type: string
+          minLength: 1
+          maxLength: 1024
+      required: [token, email, password]
     PlatformStaffSession:
       type: object
       properties:
@@ -4445,8 +5152,9 @@ components:
         id:
           type: string
           format: uuid
-        clerkUserId:
+        authAccountId:
           type: ["string", "null"]
+          description: First-party auth account id linked to this staff row.
         email:
           type: string
         emailNormalized:

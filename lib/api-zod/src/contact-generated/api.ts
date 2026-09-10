@@ -8,10 +8,12 @@ Operations. Paths are relative to the same `/api` server as `openapi.yaml`.
 **Auth**
 - Public `/contact/*` form endpoints are unauthenticated.
 - Inbound webhooks use `X-Webhook-Secret`.
-- Platform routes accept Clerk `Authorization: Bearer` **or** the
-  `ctx_platform_session` cookie (local/dev bridge). `POST /platform/auth/login`
-  is disabled in production (HTTP 410) unless an explicit non-prod override
-  is set.
+- Platform (and Handler) routes use first-party ClaimTagX auth: the
+  `ctx_auth_session` cookie (an opaque session/refresh token) **or** an
+  opaque `Authorization: Bearer` token. No hosted identity provider is used.
+  Sign in via `POST /platform/auth/login` (email + password); MFA, password
+  reset, invitation acceptance and first-owner bootstrap are also
+  first-party endpoints under `/platform/auth/*`.
 
 **Permissions**
 Platform operations declare `x-permission` matching `PLATFORM_PERMISSIONS`
@@ -376,56 +378,381 @@ export const XContactWebhookGetResponse = zod.record(
 export const XContactWebhookBody = zod.record(zod.string(), zod.unknown());
 
 /**
- * Mints `ctx_platform_session` after validating `PLATFORM_STAFF_ACCESS_KEY`.
-Returns **410** unless `PLATFORM_ALLOW_ACCESS_KEY_LOGIN=true` and
-`NODE_ENV` is not `production`. Production staff must use Clerk.
+ * Authenticates against the first-party ClaimTagX auth platform. On full
+success sets the `ctx_auth_session` cookie and (for CRM accounts) links
+the staff row. Errors are intentionally generic to avoid account
+enumeration. When MFA is required, returns `mfaRequired: true` +
+`accountId`; complete via `POST /platform/auth/mfa/challenge`.
 
- * @summary Dev-only shared access-key login
+ * @summary First-party email + password login
  */
-export const platformAuthLoginBodyAccessKeyMin = 8;
-export const platformAuthLoginBodyAccessKeyMax = 200;
-
-export const platformAuthLoginBodyNameMax = 120;
+export const platformAuthLoginBodyPasswordMax = 1024;
 
 export const PlatformAuthLoginBody = zod.object({
   email: zod.string().email(),
-  accessKey: zod
-    .string()
-    .min(platformAuthLoginBodyAccessKeyMin)
-    .max(platformAuthLoginBodyAccessKeyMax),
-  name: zod.string().max(platformAuthLoginBodyNameMax).optional(),
+  password: zod.string().min(1).max(platformAuthLoginBodyPasswordMax),
 });
 
-export const PlatformAuthLoginResponse = zod.object({
-  id: zod.string().uuid(),
-  email: zod.string().email(),
-  name: zod.string(),
-  role: zod.enum(["owner", "admin", "sales", "operator", "analyst"]),
-  permissions: zod.array(
-    zod
-      .enum([
-        "inquiries.view",
-        "inquiries.reply",
-        "inquiries.forward",
-        "inquiries.note",
-        "inquiries.assign",
-        "inquiries.status",
-        "inquiries.priority",
-        "inquiries.tags",
-        "inquiries.qualification.override",
-        "inquiries.lead_score.view",
-        "inquiries.export",
-        "inquiries.delete",
-        "templates.manage",
-        "workflows.manage",
-        "routing.manage",
-        "sla.manage",
-        "meetings.manage",
-        "analytics.view",
-        "config.manage",
+export const PlatformAuthLoginResponse = zod
+  .object({
+    authenticated: zod.boolean().optional(),
+    accountId: zod.string().optional(),
+    accessToken: zod
+      .string()
+      .optional()
+      .describe("Opaque bearer access token for non-browser clients."),
+    accessExpiresAt: zod.number().optional(),
+    staff: zod
+      .union([
+        zod.object({
+          id: zod.string().uuid(),
+          email: zod.string().email(),
+          name: zod.string(),
+          role: zod.enum(["owner", "admin", "sales", "operator", "analyst"]),
+          permissions: zod.array(
+            zod
+              .enum([
+                "inquiries.view",
+                "inquiries.reply",
+                "inquiries.forward",
+                "inquiries.note",
+                "inquiries.assign",
+                "inquiries.status",
+                "inquiries.priority",
+                "inquiries.tags",
+                "inquiries.qualification.override",
+                "inquiries.lead_score.view",
+                "inquiries.export",
+                "inquiries.delete",
+                "templates.manage",
+                "workflows.manage",
+                "routing.manage",
+                "sla.manage",
+                "meetings.manage",
+                "analytics.view",
+                "config.manage",
+              ])
+              .describe(
+                "Values from PLATFORM_PERMISSIONS in lib\/crm\/rbac.ts",
+              ),
+          ),
+        }),
+        zod.null(),
       ])
-      .describe("Values from PLATFORM_PERMISSIONS in lib\/crm\/rbac.ts"),
+      .optional(),
+    mfaRequired: zod.boolean().optional(),
+    methods: zod.array(zod.enum(["totp", "sms", "recovery"])).optional(),
+    verificationRequired: zod.boolean().optional(),
+    challengeId: zod.string().optional(),
+  })
+  .describe(
+    "Login outcome. On full success `authenticated` is true and the session cookie is set. `staff` is present when the account is linked to a CRM staff row (null for handler-only accounts). When a second factor is required, `mfaRequired` is true and the client must call `POST \/platform\/auth\/mfa\/challenge`.\n",
+  );
+
+/**
+ * @summary Submit the second factor after an mfa_required login
+ */
+export const platformAuthMfaChallengeBodyMethodDefault = `totp`;
+
+export const PlatformAuthMfaChallengeBody = zod.object({
+  accountId: zod.string(),
+  method: zod
+    .enum(["totp", "sms", "recovery"])
+    .default(platformAuthMfaChallengeBodyMethodDefault),
+  code: zod.string(),
+});
+
+export const PlatformAuthMfaChallengeResponse = zod
+  .object({
+    authenticated: zod.boolean().optional(),
+    accountId: zod.string().optional(),
+    accessToken: zod
+      .string()
+      .optional()
+      .describe("Opaque bearer access token for non-browser clients."),
+    accessExpiresAt: zod.number().optional(),
+    staff: zod
+      .union([
+        zod.object({
+          id: zod.string().uuid(),
+          email: zod.string().email(),
+          name: zod.string(),
+          role: zod.enum(["owner", "admin", "sales", "operator", "analyst"]),
+          permissions: zod.array(
+            zod
+              .enum([
+                "inquiries.view",
+                "inquiries.reply",
+                "inquiries.forward",
+                "inquiries.note",
+                "inquiries.assign",
+                "inquiries.status",
+                "inquiries.priority",
+                "inquiries.tags",
+                "inquiries.qualification.override",
+                "inquiries.lead_score.view",
+                "inquiries.export",
+                "inquiries.delete",
+                "templates.manage",
+                "workflows.manage",
+                "routing.manage",
+                "sla.manage",
+                "meetings.manage",
+                "analytics.view",
+                "config.manage",
+              ])
+              .describe(
+                "Values from PLATFORM_PERMISSIONS in lib\/crm\/rbac.ts",
+              ),
+          ),
+        }),
+        zod.null(),
+      ])
+      .optional(),
+    mfaRequired: zod.boolean().optional(),
+    methods: zod.array(zod.enum(["totp", "sms", "recovery"])).optional(),
+    verificationRequired: zod.boolean().optional(),
+    challengeId: zod.string().optional(),
+  })
+  .describe(
+    "Login outcome. On full success `authenticated` is true and the session cookie is set. `staff` is present when the account is linked to a CRM staff row (null for handler-only accounts). When a second factor is required, `mfaRequired` is true and the client must call `POST \/platform\/auth\/mfa\/challenge`.\n",
+  );
+
+/**
+ * @summary Resolve the current first-party session identity
+ */
+export const PlatformAuthSessionResponse = zod.object({
+  accountId: zod.string().optional(),
+  email: zod.string().nullish(),
+  sessionId: zod.string().nullish(),
+  staff: zod
+    .union([
+      zod.object({
+        id: zod.string().uuid(),
+        email: zod.string().email(),
+        name: zod.string(),
+        role: zod.enum(["owner", "admin", "sales", "operator", "analyst"]),
+        permissions: zod.array(
+          zod
+            .enum([
+              "inquiries.view",
+              "inquiries.reply",
+              "inquiries.forward",
+              "inquiries.note",
+              "inquiries.assign",
+              "inquiries.status",
+              "inquiries.priority",
+              "inquiries.tags",
+              "inquiries.qualification.override",
+              "inquiries.lead_score.view",
+              "inquiries.export",
+              "inquiries.delete",
+              "templates.manage",
+              "workflows.manage",
+              "routing.manage",
+              "sla.manage",
+              "meetings.manage",
+              "analytics.view",
+              "config.manage",
+            ])
+            .describe("Values from PLATFORM_PERMISSIONS in lib\/crm\/rbac.ts"),
+        ),
+      }),
+      zod.null(),
+    ])
+    .optional(),
+});
+
+/**
+ * Always returns `{ ok: true }` regardless of whether the account exists,
+to prevent account enumeration. If the account exists, a one-time reset
+code is emailed.
+
+ * @summary Request a password-reset code (always generic success)
+ */
+export const PlatformAuthForgotPasswordBody = zod.object({
+  email: zod.string().email(),
+});
+
+export const PlatformAuthForgotPasswordResponse = zod.object({
+  ok: zod.boolean().optional(),
+});
+
+/**
+ * @summary Reset a password with a one-time code (single-use)
+ */
+export const platformAuthResetPasswordBodyNewPasswordMax = 1024;
+
+export const PlatformAuthResetPasswordBody = zod.object({
+  challengeId: zod.string(),
+  code: zod.string(),
+  newPassword: zod
+    .string()
+    .min(1)
+    .max(platformAuthResetPasswordBodyNewPasswordMax),
+});
+
+export const PlatformAuthResetPasswordResponse = zod.object({
+  ok: zod.boolean().optional(),
+});
+
+/**
+ * Requires the first-party `ctx_auth_session` cookie (or bearer token) and
+returns the active session inventory for the current account. The
+`current` field identifies the session resolved from the cookie/token on
+this request.
+
+ * @summary List active sessions for the current account
+ */
+export const PlatformAuthListSessionsResponse = zod.object({
+  current: zod.string().nullable(),
+  sessions: zod.array(
+    zod.object({
+      id: zod.string(),
+      deviceId: zod.string().nullish(),
+      issuedAt: zod.coerce.date(),
+      expiresAt: zod.coerce.date(),
+      current: zod.boolean(),
+    }),
   ),
+});
+
+/**
+ * Requires the first-party `ctx_auth_session` cookie (or bearer token) and
+revokes the selected session for the current account. If the selected
+session is the one backing the current `ctx_auth_session`, the response
+also clears that cookie.
+
+ * @summary Revoke one active session
+ */
+export const PlatformAuthRevokeSessionParams = zod.object({
+  id: zod.coerce.string(),
+});
+
+/**
+ * Public first-party verification endpoint. Confirms the one-time email
+challenge and does not set or require the `ctx_auth_session` cookie.
+
+ * @summary Confirm an email verification challenge
+ */
+export const PlatformAuthVerifyEmailBody = zod.object({
+  challengeId: zod.string(),
+  code: zod.string(),
+});
+
+export const PlatformAuthVerifyEmailResponse = zod.object({
+  verified: zod.boolean(),
+});
+
+/**
+ * Requires the first-party `ctx_auth_session` cookie (or bearer token).
+On success all sessions for the account are revoked, including the
+current session, and the `ctx_auth_session` cookie is cleared so the
+client must authenticate again.
+
+ * @summary Change the current account password
+ */
+export const platformAuthChangePasswordBodyCurrentPasswordMax = 1024;
+
+export const platformAuthChangePasswordBodyNewPasswordMax = 1024;
+
+export const PlatformAuthChangePasswordBody = zod.object({
+  currentPassword: zod
+    .string()
+    .min(1)
+    .max(platformAuthChangePasswordBodyCurrentPasswordMax),
+  newPassword: zod
+    .string()
+    .min(1)
+    .max(platformAuthChangePasswordBodyNewPasswordMax),
+});
+
+export const PlatformAuthChangePasswordResponse = zod.object({
+  ok: zod.boolean(),
+  reauthenticate: zod.boolean(),
+});
+
+/**
+ * Requires the first-party `ctx_auth_session` cookie (or bearer token).
+Returns an `otpauthUri` for the current account; confirm enrollment with
+`POST /platform/auth/mfa/confirm`.
+
+ * @summary Start TOTP MFA enrollment
+ */
+export const PlatformAuthMfaEnrollResponse = zod.object({
+  otpauthUri: zod.string(),
+});
+
+/**
+ * Requires the first-party `ctx_auth_session` cookie (or bearer token) and
+verifies the code generated from the pending TOTP enrollment for the
+current account.
+
+ * @summary Confirm pending TOTP MFA enrollment
+ */
+export const PlatformAuthMfaConfirmBody = zod.object({
+  code: zod.string(),
+});
+
+export const PlatformAuthMfaConfirmResponse = zod.object({
+  ok: zod.boolean(),
+});
+
+/**
+ * Requires the first-party `ctx_auth_session` cookie (or bearer token).
+Generates a fresh set of one-time recovery codes for the current account.
+
+ * @summary Generate MFA recovery codes
+ */
+export const PlatformAuthMfaRecoveryCodesResponse = zod.object({
+  codes: zod.array(zod.string()),
+});
+
+/**
+ * Public first-party invitation acceptance endpoint. A valid invite token
+provisions the account, links the staff row, issues a session, and sets
+the HttpOnly `ctx_auth_session` cookie.
+
+ * @summary Accept a staff invitation and create a password
+ */
+export const platformAuthInviteAcceptBodyTokenMin = 16;
+export const platformAuthInviteAcceptBodyTokenMax = 400;
+
+export const platformAuthInviteAcceptBodyPasswordMax = 1024;
+
+export const platformAuthInviteAcceptBodyNameMax = 120;
+
+export const PlatformAuthInviteAcceptBody = zod.object({
+  token: zod
+    .string()
+    .min(platformAuthInviteAcceptBodyTokenMin)
+    .max(platformAuthInviteAcceptBodyTokenMax),
+  password: zod.string().min(1).max(platformAuthInviteAcceptBodyPasswordMax),
+  name: zod.string().max(platformAuthInviteAcceptBodyNameMax).optional(),
+});
+
+/**
+ * Public first-party bootstrap endpoint guarded by a single-use bootstrap
+token. When no staff exists, it provisions the owner account, consumes
+the token, issues a session, and sets the HttpOnly `ctx_auth_session`
+cookie.
+
+ * @summary Bootstrap the first platform owner
+ */
+export const platformAuthBootstrapBodyTokenMin = 16;
+export const platformAuthBootstrapBodyTokenMax = 400;
+
+export const platformAuthBootstrapBodyEmailMax = 254;
+
+export const platformAuthBootstrapBodyPasswordMax = 1024;
+
+export const PlatformAuthBootstrapBody = zod.object({
+  token: zod
+    .string()
+    .min(platformAuthBootstrapBodyTokenMin)
+    .max(platformAuthBootstrapBodyTokenMax),
+  email: zod.string().email().max(platformAuthBootstrapBodyEmailMax),
+  password: zod.string().min(1).max(platformAuthBootstrapBodyPasswordMax),
 });
 
 /**
@@ -530,7 +857,10 @@ export const ListPlatformContactStaffResponse = zod.object({
   staff: zod.array(
     zod.object({
       id: zod.string().uuid(),
-      clerkUserId: zod.string().nullish(),
+      authAccountId: zod
+        .string()
+        .nullish()
+        .describe("First-party auth account id linked to this staff row."),
       email: zod.string(),
       emailNormalized: zod.string(),
       name: zod.string(),
@@ -847,7 +1177,10 @@ export const GetPlatformContactInquiryResponse = zod.object({
   assignee: zod.union([
     zod.object({
       id: zod.string().uuid(),
-      clerkUserId: zod.string().nullish(),
+      authAccountId: zod
+        .string()
+        .nullish()
+        .describe("First-party auth account id linked to this staff row."),
       email: zod.string(),
       emailNormalized: zod.string(),
       name: zod.string(),
