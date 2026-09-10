@@ -4,7 +4,7 @@ THE ADVANCED CONTACT/INQUIRY CRM AND OMNICHANNEL CUSTOMER-COMMUNICATIONS PLATFOR
 
 Frozen scope means the authorized product boundary is stable. It does not mean the implementation is basic or incomplete. This ledger does not describe the product as an MVP, demo, proof of concept, starter, simplified CRM, or minimal inbox.
 
-**Worktree:** `fwie` · **branch:** `cursor/3b23f5cb` · **source:** `83ca53e` · **schema head:** `0020_crm_omnichannel_inbox.sql` · **isolated PG:** `127.0.0.1:55470`
+**Worktree:** `fwie` · **branch:** `cursor/3b23f5cb` · **source:** `83ca53e` · **schema head:** `0023` identity finalization · **isolated PG:** `127.0.0.1:55470`
 
 Local implementation status vocabulary:
 
@@ -37,11 +37,11 @@ Local implementation status vocabulary:
 | C-ANL | Analytics and durable exports | **LOCALLY IMPLEMENTED AND VERIFIED** (Suite C CSV 78-byte `metric,value`) | Staging |
 | C-DSAR | DSAR, retention, legal-hold foundations | **LOCALLY IMPLEMENTED AND VERIFIED** (Suite C) | **QUALIFIED EXTERNAL REVIEW OUTSTANDING** (not a statutory claim) |
 | C-ATT | Attachment storage/scanning abstraction, fail-closed production | **LOCALLY IMPLEMENTED AND VERIFIED** | Object-storage credentials |
-| C-AUTH | RBAC and object-level authorization | **LOCALLY IMPLEMENTED AND VERIFIED** | Live Clerk tenant |
+| C-AUTH | RBAC and object-level authorization | **LOCALLY IMPLEMENTED AND VERIFIED** | Staging first-party auth matrix |
 | C-I18N | Localization and RTL | **LOCALLY IMPLEMENTED AND VERIFIED** (906-key parity; Suite D) | Qualified Arabic legal translation |
 | C-SEO | SEO architecture | **LOCALLY IMPLEMENTED AND VERIFIED** (SEO HTML PASS) | Production crawl |
 | C-A11Y | Accessibility engineering | **LOCALLY IMPLEMENTED AND VERIFIED** (bounded Suites A–D) | Formal WCAG certification **NOT CLAIMED** |
-| C-MIG | Migrations through 0020, dump/restore, worker recovery | **LOCALLY IMPLEMENTED AND VERIFIED** | Staging/production migrate |
+| C-MIG | Migrations through 0023, dump/restore, worker recovery | **LOCALLY IMPLEMENTED AND VERIFIED** | Staging/production migrate |
 | C-BOT | Turnstile hostname/action enforcement | **IMPLEMENTED AWAITING CREDENTIALS** | Live Turnstile site/secret |
 
 ## Accepted local evidence (preserve)
@@ -50,7 +50,7 @@ Local implementation status vocabulary:
 - API typecheck/build PASS; website typecheck/full production build PASS
 - SEO HTML PASS; i18n 906-key parity PASS; public-copy engineering gate PASS; performance-budget gate PASS
 - CRM suite **418 pass / 0 fail / 0 skip**
-- Migrations through schema head **0020** PASS; dump/restore at 0020 PASS
+- Migrations through schema head **0023** PASS; dump/restore at 0023 PASS
 - Worker heartbeat and dual-worker SKIP LOCKED recovery PASS
 - OpenAPI/Orval drift PASS
 - Combined A–E mega-matrix (Chrome-13): **HISTORICAL FAIL** — not a closure gate

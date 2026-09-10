@@ -27,13 +27,13 @@ Production requirements demand:
 
 ## Decision
 
-### 1. Clerk-first staff auth (not shared access keys)
+### 1. First-party staff auth (not shared access keys)
 
-Staff sign in with **Clerk**. Platform authorization is a row in `crm_staff` keyed by verified email and `clerk_user_id`, with `role` + `permissions` enforced by `requirePlatformAdmin` / `requirePermission`.
+Staff sign in with ClaimTagX first-party auth. Platform authorization is a row in `crm_staff` keyed by verified email and `auth_account_id`, with `role` + `permissions` enforced by `requirePlatformAdmin` / `requirePermission`.
 
 - Production must **not** accept a shared `PLATFORM_STAFF_ACCESS_KEY` as a login credential.
 - Allowlist (`PLATFORM_ADMIN_EMAILS`) and staff `status = active` remain the gate for who may become or remain staff.
-- HMAC cookie sessions, if retained at all, are a short-lived implementation detail of an authenticated Clerk identity — not a substitute for Clerk.
+- HMAC cookie sessions are backed by the first-party auth account and must not become a shared-key substitute.
 - The public contact form remains unauthenticated.
 
 ### 2. Postgres `crm_jobs` as transactional outbox + dedicated worker with `SKIP LOCKED`
@@ -107,7 +107,7 @@ Meeting types store an **external booking URL** (`crm_meeting_types.booking_url`
 
 ### Negative / operational cost
 
-- Clerk is a production dependency for operators; outage of IdP blocks inbox (public submit does not).
+- First-party auth is a production dependency for operators; auth-service or database outage blocks inbox (public submit does not).
 - Every submit requires a transactional pattern (connection, rollback, outbox) — more code than fire-and-forget inserts.
 - A worker must be running or the outbox stalls; ops must alert on lag and dead letters.
 - DB rate-limit rows need TTL/cleanup.
@@ -117,7 +117,7 @@ Meeting types store an **external booking URL** (`crm_meeting_types.booking_url`
 
 ### Risks to manage
 
-- Dual auth (Clerk + access key) must be removed; leaving both is a security regression vs this ADR.
+- Dual auth (first-party auth + shared access key) must be removed; leaving both is a security regression vs this ADR.
 - Early Resend helper swallowed errors — replaced by Microsoft Graph adapter that fails jobs on provider errors.
 - In-process `setInterval` is not a substitute for a dedicated SKIP LOCKED worker in production.
 
@@ -127,7 +127,7 @@ Meeting types store an **external booking URL** (`crm_meeting_types.booking_url`
 
 ### Staff auth: shared access key / HMAC cookie only
 
-**Rejected.** A single `PLATFORM_STAFF_ACCESS_KEY` cannot be rotated per person, appears in the login UI, and cannot satisfy least-privilege or offboarding. HMAC cookies signed with that key inherit the same blast radius. Clerk (already used on the platform) is the staff IdP; `crm_staff` remains the authorization record.
+**Rejected.** A single `PLATFORM_STAFF_ACCESS_KEY` cannot be rotated per person, appears in the login UI, and cannot satisfy least-privilege or offboarding. HMAC cookies signed with that key inherit the same blast radius. ClaimTagX first-party auth is the staff identity system; `crm_staff` remains the authorization record.
 
 ### Jobs: in-request side effects / Redis queue / pg-boss as product dependency
 
@@ -143,7 +143,7 @@ Meeting types store an **external booking URL** (`crm_meeting_types.booking_url`
 
 ### Schema: `drizzle-kit push` in production
 
-**Rejected.** Push is acceptable only for local experiments. CRM uniqueness (references, idempotency keys, staff clerk id) must be versioned SQL.
+**Rejected.** Push is acceptable only for local experiments. CRM uniqueness (references, idempotency keys, staff account links) must be versioned SQL.
 
 ### Monolith tables shared with venue messaging
 
@@ -165,11 +165,11 @@ Status is code-vs-ADR only — not production release evidence. Release gates re
 
 | Decision | Current code vs ADR |
 | --- | --- |
-| Clerk-first | Clerk middleware and `staffFromClerk` exist; access-key login gated off in production — **partially compliant** until shared-key path fully removed from non-prod surfaces |
+| First-party auth | Session middleware and staff resolution exist; access-key login gated off in production — **partially compliant** until shared-key path fully removed from non-prod surfaces |
 | Transactional outbox | Submit path commits inquiry + `crm_jobs` in one transaction — **compliant in code**; staging/prod evidence **NOT RUN** |
 | SKIP LOCKED worker | `claimJobs` uses `FOR UPDATE SKIP LOCKED` + leases; dedicated `worker.ts`; harness types excluded via `type NOT LIKE 'dual_proc_verify%'` — **compliant in code**; last suite8 local PASS (historical, pre skip-remediation) — not release evidence |
 | DB rate limits | Postgres `crm_rate_limits` + admin limiter — **compliant in code**; multi-instance soak incomplete |
-| Drizzle migrations | Versioned SQL through **0019** (`0017` saved views, `0018` marketing audit immutability, `0019` staff routing) — **compliant in code**; local bootstrap/restore at 0019 head evidenced (`tmp/migration-bootstrap-p12.log`, `dump-p12.sql`); staging/prod apply **NOT RUN** |
+| Drizzle migrations | Versioned SQL through **0023** (including first-party auth identity finalization) — **compliant in code**; local bootstrap/restore evidence exists; staging/prod apply **NOT RUN** |
 | Bounded modules | Largely followed |
 | Graph hard fail | Production adapter fails jobs on provider errors — **compliant** (simulator/local only outside production); live tenant **BLOCKED** |
 | External scheduling URL | Followed (`crm_meeting_types.booking_url`) |

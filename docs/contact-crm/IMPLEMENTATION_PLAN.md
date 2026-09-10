@@ -14,7 +14,7 @@ Email architecture is Microsoft Graph/Exchange Online (Resend/Svix are historica
 | 2 | Transactional submit / outbox | **Largely coded; current local p12 suite PASS; staging/prod pending** |
 | 3 | Durable worker | **Largely coded; current local p12 suite PASS**; `tmp/dual-worker-soak1.log` PASS dual-process `SKIP LOCKED` |
 | 4 | Email threading (Graph) | **Simulator current local p12 suite PASS; live tenant BLOCKED** |
-| 5 | Clerk RBAC | **In progress** - HTTP RBAC + objectAuth in current local p12 suite; real tenant **NOT RUN** |
+| 5 | First-party auth RBAC | **In progress** - HTTP RBAC + objectAuth in current local p12 suite; staging auth matrix **NOT RUN** |
 | 6 | OpenAPI | **In progress** (marketing OpenAPI + Orval regenerated; full drift CI incomplete) |
 | 7 | SLA scheduler + calendar | **Coded; unit/lifecycle in current local p12 suite; live soak pending** |
 | 8 | Admin config UX | **Coded; config tests in current local p12 suite** (direct PUT bypass still to govern) |
@@ -58,7 +58,7 @@ Check in and apply versioned SQL for all `crm_*` tables (including jobs, staff, 
 ### Acceptance (not yet evidenced)
 
 - `crm_*` created only via migrate, not implicit push.
-- Unique constraints: inquiry `reference`, `idempotency_key`, staff email/clerk id, template keys.
+- Unique constraints: inquiry `reference`, `idempotency_key`, staff email/account link, template keys.
 - CI apply against a provisioned database.
 
 ---
@@ -161,27 +161,27 @@ Outbound acknowledgments and staff replies send through Microsoft Graph `sendMai
 
 ---
 
-## Phase 5 — Clerk RBAC
+## Phase 5 — First-Party Auth RBAC
 
 **Depends on:** Phases 1–2 (staff table migrated); can overlap Phase 4  
-**ADR:** Clerk-first, no shared access key  
+**ADR:** First-party auth, no shared access key  
 **Status:** in progress (not finished this iteration)
 
 ### Goal
 
-Operators sign in with Clerk. Platform routes require `crm_staff` + permission. Remove access-key login from API and admin UI.
+Operators sign in with first-party ClaimTagX auth. Platform routes require `crm_staff` + permission. Remove access-key login from API and admin UI.
 
 ### Work
 
-1. Admin UI: Clerk sign-in; drop access-key fields.
+1. Admin UI: first-party sign-in; drop access-key fields.
 2. Delete or disable `POST /platform/auth/login` in production (fail closed if key env is set).
 3. Enforce `requirePermission` on every mutating platform route.
 4. Staff invite/deactivate via config (owner/admin only).
-5. Map Clerk user id onto `crm_staff.clerk_user_id` uniquely.
+5. Map first-party account id onto `crm_staff.auth_account_id` uniquely.
 
 ### Coded this iteration (partial)
 
-- `Login.tsx` Clerk session bridge; legacy key UI only when non-prod flags allow.
+- `Login.tsx` first-party session bridge; legacy key UI only when non-prod flags allow.
 - Production shared-key login returns 410.
 - Unit permission matrix (`rbac.matrix.test.ts`).
 - HTTP RBAC `rbacHttp.pg.test.ts` + `objectAuth.ts` on inquiry mutate/assign/bulk — **included in suite8** (full object-scope matrix beyond suite cases incomplete).
@@ -189,7 +189,7 @@ Operators sign in with Clerk. Platform routes require `crm_staff` + permission. 
 ### Acceptance (not yet evidenced)
 
 - Unauthenticated `/platform/*` → 401.
-- Sales role cannot `config.manage` (HTTP) — suite8 covers RBAC HTTP cases; browser / real Clerk **NOT RUN**.
+- Sales role cannot `config.manage` (HTTP) — suite8 covers RBAC HTTP cases; browser / staging auth **NOT RUN**.
 - Shared key cannot mint a session in production (path fully gone from production builds).
 
 ---
@@ -206,7 +206,7 @@ Document `/contact/*` and `/platform/contact/*` (and platform auth/me) in `lib/a
 ### Work
 
 1. Add OpenAPI paths matching Zod bodies (`SubmitBody`, inquiry list filters, reply payloads).
-2. Security schemes: none for public submit; Clerk session for platform.
+2. Security schemes: none for public submit; first-party session/bearer token for platform.
 3. Generate `lib/api-zod` / `lib/api-client-react` as used elsewhere.
 4. Optionally replace ad-hoc `contactApi.ts` fetch helpers with generated client.
 
@@ -376,7 +376,7 @@ Automated gates prevent regressions of durability, authz, contracts, and a11y.
 
 ### Goal
 
-Runbooks: migrate, worker process, Microsoft Graph / Exchange Online, Clerk env, Graph webhook secrets, dead-letter replay, rate-limit cleanup, backup/PII. Update this folder; keep [PRODUCTION_READINESS.md](./PRODUCTION_READINESS.md) honest.
+Runbooks: migrate, worker process, Microsoft Graph / Exchange Online, first-party auth env, Graph webhook secrets, dead-letter replay, rate-limit cleanup, backup/PII. Update this folder; keep [PRODUCTION_READINESS.md](./PRODUCTION_READINESS.md) honest.
 
 ### Work
 
@@ -405,6 +405,6 @@ Runbooks: migrate, worker process, Microsoft Graph / Exchange Online, Clerk env,
 - Native calendar / Graph / Google sync
 - Multi-tenant CRM productization
 - Full marketing automation or CDP
-- Replacing Clerk with a custom IdP
+- Replacing the first-party auth platform with a hosted IdP
 - Declaring SOC2 / ISO / GDPR certification complete
 - Token product features (out of scope)

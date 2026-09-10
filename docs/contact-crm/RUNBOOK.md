@@ -69,7 +69,7 @@ Local isolated load is **authorized**. Production load remains **NOT RUN**.
 | --- | --- | --- |
 | API | `pnpm --filter @workspace/api-server start` | Do **not** embed the worker in production |
 | Worker | `pnpm --filter @workspace/api-server start:worker` | Required for email, workflows, SLA refresh, analytics fan-out |
-| Marketing | Cloudflare Pages build via `scripts/build-cf-pages.sh` | Set `VITE_API_BASE_URL`, `VITE_CLERK_PUBLISHABLE_KEY` |
+| Marketing | Cloudflare Pages build via `scripts/build-cf-pages.sh` | Set `VITE_API_BASE_URL` / `VITE_API_URL` and `VITE_SITE_URL` |
 
 ## Environment (minimum)
 
@@ -78,7 +78,7 @@ Local isolated load is **authorized**. Production load remains **NOT RUN**.
 - `LISTEN_HOST` (required in production; `127.0.0.1` when a reverse proxy is on the same host)
 - `CORS_ALLOWED_ORIGINS` (include marketing origin)
 - `PLATFORM_ADMIN_EMAILS`
-- `PLATFORM_STAFF_SESSION_SECRET` (production required; must not equal access key)
+- `AUTH_MFA_ENCRYPTION_KEY` (production required; 32-byte AES-GCM key)
 - `MS_GRAPH_TENANT_ID`, `MS_GRAPH_CLIENT_ID`, and **either** `MS_GRAPH_CLIENT_SECRET` **or** (`MS_GRAPH_CLIENT_CERTIFICATE` / `MS_GRAPH_CLIENT_CERTIFICATE_PATH` + `MS_GRAPH_CLIENT_CERTIFICATE_THUMBPRINT`)
 - `MS_GRAPH_MAILBOX_UPN`, `MS_GRAPH_NOTIFICATION_URL`, `MS_GRAPH_CLIENT_STATE`
 - `MS_GRAPH_DELTA_ENCRYPTION_KEY` (32-byte base64 or hex)
@@ -114,7 +114,7 @@ Session/signing rotation: set `PLATFORM_STAFF_SESSION_SECRET_PREVIOUS` / `CRM_AT
 
 ## Migrations
 
-Current schema head: **0019_crm_staff_routing_attributes.sql** (after `0017_crm_saved_views_enterprise.sql`; the former `0017` marketing audit migration was renamed to `0018` to avoid duplicate `0017` filenames).
+Current schema head: **0023 identity-finalization migration**. Migrations `0021` through `0023` install first-party auth tables, add hashed staff invite tokens, reconcile staff by verified email, remove the retired external identity column, and leave `crm_staff.auth_account_id` as the live staff identity link.
 
 Prefer the versioned applicator (do not rely on one-off `psql -f` of a single mid-chain file):
 
@@ -147,7 +147,7 @@ node scripts/crm-infra-verify.mjs --dual-worker-sql
 ```
 
 Load/soak: `node scripts/crm-infra-verify.mjs --load-plan`  
-Clerk 401: `node scripts/crm-infra-verify.mjs --clerk-plan` (**BLOCKED** — real tenant)  
+First-party auth check: verify `/platform/auth/login`, MFA/password-reset flows, staff invite activation, and an unsigned `/platform/contact/inquiries` request returning 401.  
 Graph readiness: `node scripts/crm-infra-verify.mjs --graph-plan` (**BLOCKED** — live tenant)
 
 Microsoft Graph check: with `MS_GRAPH_*` unset in production, `/api/readyz` must return 503 and send jobs must fail (not complete).
@@ -160,7 +160,7 @@ Orval (local binary; no registry):
 node lib/api-spec/node_modules/orval/dist/bin/orval.mjs --config lib/api-spec/orval.config.mjs --project contact-crm-client-react --verbose
 ```
 
-Clerk check: `PLATFORM_ADMIN_EMAILS` allowlist + staff invite; unsigned `/platform/contact/inquiries` returns 401.
+Auth check: `PLATFORM_ADMIN_EMAILS` allowlist + staff invite; unsigned `/platform/contact/inquiries` returns 401.
 
 OpenAPI client catalog (metadata only): `node scripts/sync-contact-crm-ops.mjs --write`
 

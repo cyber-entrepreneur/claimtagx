@@ -36,7 +36,7 @@ This matrix does **not** claim enterprise completeness or release readiness. Sta
 | CRM-ANL | Analytics | In progress | `crm_analytics_events`, analytics job, `pages/admin/Analytics.tsx`, platform analytics handler |
 | CRM-OBS | Observability | In progress | pino HTTP, correlation IDs, `crm_audit_events`, `routes/platformHealth.ts` |
 | CRM-A11Y | Accessibility (public form) | In progress | `Contact.tsx` |
-| CRM-SEC | Security | In progress | CORS allowlist, honeypot, consent, webhook helpers, Clerk middleware |
+| CRM-SEC | Security | In progress | CORS allowlist, honeypot, consent, webhook helpers, first-party auth middleware |
 | CRM-MIG | Migrations | In progress | `lib/db/src/schema/crm.ts`, `lib/db/drizzle/0001`–`0020_*.sql`, `ROLLBACK.md` |
 | CRM-TEST | Tests | In progress | `lib/crm/*.test.ts`. Current local isolated suite `tmp/crm-suite-full-closure-2.log` **418/0/0**; restore `tmp/restore-worker-recovery-closure.log` **6/0/0**; bounded Suites A–D (not combined A–E); staging/prod / load **NOT RUN** |
 | CRM-GOV | Data governance | In progress | `lib/crm/governance.ts` (DSAR, anonymize, retention, legal hold), `routes/platformGovernance.ts`, `crm_consent_records`, `crm_legal_holds` |
@@ -54,7 +54,7 @@ This matrix does **not** claim enterprise completeness or release readiness. Sta
 | **Current status** | **In progress** |
 | **Evidence** | `GET /contact/bootstrap`, `POST /contact/inquiries` with Zod validation, honeypot, terms required, phone normalization, attribution. `submitInquiry` wraps company, contact, reference counter, inquiry / conversation / messages / answers / consent / qualification / SLA / audit **and** `crm_jobs` in `db.transaction`. Meeting generation remains after commit. Current local isolated browser evidence at source `83ca53e`: Chromium `tmp/pw-chromium-p12g.log`, Firefox `tmp/pw-firefox-p12d.log`, and WebKit `tmp/pw-webkit-p12.log` via `tmp/run-contact-e2e.ps1 -BrowserLabel <browser>` with `CRM_E2E_API`, `CRM_ADMIN_E2E=1`, `CRM_HTTP_TEST_AUTH`, `PLAYWRIGHT_SKIP_WEBSERVER=1`, PG `55432`, API `18080`, Vite `5173` -> **88 pass x 5 viewports / 0 fail / 0 skip** for each. Prior-head Playwright logs (`141/0/24`, `131/0/34`, `141/0/24`) are History only. `verify-live-contact-db.mts` **PASS** at checkpoint. Submit/outbox durability covered in current local isolated suite `tmp/crm-suite-full-p12d.log` **338/0/0**. |
 | **Target modules** | Frontend: `Contact.tsx`, `contactApi.ts`. API: `routes/contact.ts`. Domain: `orchestrator.submitInquiry`. Persistence: `crm_contacts`, `crm_companies`, `crm_inquiries`, `crm_inquiry_answers`, `crm_consent_records`. |
-| **Gap** | Browser Contact/Admin matrix is local isolated only despite Chromium/Firefox/WebKit current-head ALL_OK; staging/prod submit soak **NOT RUN**; real Clerk **BLOCKED**; `send_acknowledgment` is workflow-driven rather than a dedicated submit outbox row; public a11y and contract gates lack release evidence (see CRM-A11Y, CRM-OAPI). G-TXN remains **FAIL**. |
+| **Gap** | Browser Contact/Admin matrix is local isolated only despite Chromium/Firefox/WebKit current-head ALL_OK; staging/prod submit soak **NOT RUN**; first-party auth staging matrix **NOT RUN**; `send_acknowledgment` is workflow-driven rather than a dedicated submit outbox row; public a11y and contract gates lack release evidence (see CRM-A11Y, CRM-OAPI). G-TXN remains **FAIL**. |
 
 ### CRM-TYPE — Inquiry types
 
@@ -74,7 +74,7 @@ This matrix does **not** claim enterprise completeness or release readiness. Sta
 | **Current status** | **In progress** |
 | **Evidence** | `scoreInquiry` + published model rows; `crm_qualification_results`; override columns on inquiries; heuristic `ai_classify` job. Non-sales inquiries stay `UNASSESSED`. Config tab for models exists. Override / object-auth HTTP coverage via `objectAuth` + `rbacHttp` in current local isolated suite `tmp/crm-suite-full-p12d.log` **338/0/0**. |
 | **Target modules** | `qualification.ts`, `facts.ts`, `ai.ts`, orchestrator scoring, platform override APIs, `InquiryWorkspace`. |
-| **Gap** | Full mutation matrix beyond current suite cases incomplete; AI is heuristic only; no evaluation harness; browser/Clerk override path **NOT RUN**. |
+| **Gap** | Full mutation matrix beyond current suite cases incomplete; AI is heuristic only; no evaluation harness; browser auth override path **NOT RUN**. |
 
 ### CRM-ROUTE — Routing
 
@@ -122,9 +122,9 @@ This matrix does **not** claim enterprise completeness or release readiness. Sta
 | --- | --- |
 | **Mandatory outcomes** | Filterable inbox, unread/assignment, conversation timeline, reply/note/forward, status/priority/tags, qualification, meeting offer, saved views. |
 | **Current status** | **In progress** |
-| **Evidence** | `/admin/contact` Inbox, InquiryWorkspace, platform inquiry APIs. Login is Clerk-first; legacy access-key UI is gated to non-production flags. Keyset `nextCursor` on inquiries list; bulk assign/status return `succeeded`/`failed`; permission-aware bulk gates; duplicates endpoint; Operations dead-letter jobs UI; analytics inquiryType drill-down links. Object-scope mutate/assign/bulk + HTTP RBAC covered in current local isolated suite `tmp/crm-suite-full-p12d.log` (`objectAuth*`, `rbacHttp.pg.test.ts`). Ops fix: AdminApp `me` fetch no longer aborts on every location change. |
+| **Evidence** | `/admin/contact` Inbox, InquiryWorkspace, platform inquiry APIs. Login uses first-party auth; legacy access-key UI is gated to non-production flags. Keyset `nextCursor` on inquiries list; bulk assign/status return `succeeded`/`failed`; permission-aware bulk gates; duplicates endpoint; Operations dead-letter jobs UI; analytics inquiryType drill-down links. Object-scope mutate/assign/bulk + HTTP RBAC covered in current local isolated suite `tmp/crm-suite-full-p12d.log` (`objectAuth*`, `rbacHttp.pg.test.ts`). Ops fix: AdminApp `me` fetch no longer aborts on every location change. |
 | **Target modules** | `Inbox.tsx`, `InquiryWorkspace.tsx`, `Analytics.tsx`, `routes/platformContact.ts`, `objectAuth.ts`, `pages/admin/Login.tsx`. |
-| **Gap** | Permission-aware UI completeness beyond coded gates; local isolated admin Playwright ALL_OK on Chromium p12d; real Clerk **BLOCKED**. Keyset client consumption + soak incomplete. Bulk partial-failure UX polish remaining. |
+| **Gap** | Permission-aware UI completeness beyond coded gates; local isolated admin Playwright ALL_OK on Chromium p12d; first-party auth staging matrix **NOT RUN**. Keyset client consumption + soak incomplete. Bulk partial-failure UX polish remaining. |
 
 ### CRM-CFG — Configuration admin
 
@@ -140,11 +140,11 @@ This matrix does **not** claim enterprise completeness or release readiness. Sta
 
 | Item | Detail |
 | --- | --- |
-| **Mandatory outcomes** | Staff authenticate via Clerk; `crm_staff` is the authorization source; permission checks on every platform mutation; no shared access key in production. |
+| **Mandatory outcomes** | Staff authenticate via first-party auth; `crm_staff` is the authorization source; permission checks on every platform mutation; no shared access key in production. |
 | **Current status** | **In progress** |
-| **Evidence** | Clerk middleware + `staffFromClerk`; role permission map; `requirePermission` with permission-denied audit. Production never enables access-key login (`authFlags.ts`). Staff invite table + POST `/platform/contact/staff/invite`. Unit RBAC matrix + **HTTP RBAC** `rbacHttp.pg.test.ts` + **objectAuth** source/unit are included in current local isolated suite `tmp/crm-suite-full-p12d.log` **338/0/0**. |
-| **Target modules** | `requirePlatformAdmin.ts`, `authFlags.ts`, `rbac.ts`, `rbac.matrix.test.ts`, `rbacHttp.pg.test.ts`, `objectAuth.ts`, `crm_staff.clerk_user_id`, `crm_staff_invites`, `pages/admin/Login.tsx`. |
-| **Gap** | Legacy login module still exists for non-prod; browser admin auth matrix / real Clerk tenant **NOT RUN**; full object-scope coverage beyond current HTTP suite cases incomplete; Clerk session revocation via IdP **NOT RUN**. G-AUTH / G-RBAC remain **FAIL**. |
+| **Evidence** | First-party session middleware + staff resolution; role permission map; `requirePermission` with permission-denied audit. Production never enables access-key login (`authFlags.ts`). Staff invite table + POST `/platform/contact/staff/invite`. Unit RBAC matrix + **HTTP RBAC** `rbacHttp.pg.test.ts` + **objectAuth** source/unit are included in current local isolated suite `tmp/crm-suite-full-p12d.log` **338/0/0**. |
+| **Target modules** | `requirePlatformAdmin.ts`, `authFlags.ts`, `rbac.ts`, `rbac.matrix.test.ts`, `rbacHttp.pg.test.ts`, `objectAuth.ts`, `crm_staff.auth_account_id`, `crm_staff_invites`, `pages/admin/Login.tsx`. |
+| **Gap** | Legacy login module still exists for non-prod; browser admin auth matrix / staging first-party users **NOT RUN**; full object-scope coverage beyond current HTTP suite cases incomplete; session revocation soak **NOT RUN**. G-AUTH / G-RBAC remain **FAIL**. |
 
 ### CRM-JOBS — Durable jobs and transactional outbox
 
@@ -252,7 +252,7 @@ This matrix does **not** claim enterprise completeness or release readiness. Sta
 
 1. **Coded ≠ verified.** Durability, OpenAPI, threading, governance, analytics, SLA calendar, config UX, and public a11y landed as code this iteration. Release gates remain FAIL / BLOCKED / NOT RUN until evidence exists.
 2. **Schema vs apply.** Versioned SQL through **0019** is checked in; local 0019 restore is evidenced, and `migrate.ts` baseline fingerprint was refreshed after head migrations. Staging/prod migrate + rollback are not evidenced.
-3. **Auth dual-path.** Clerk is the intended production path; shared access key remains behind non-prod flags.
+3. **Auth dual-path.** First-party auth is the intended production path; shared access key remains behind non-prod flags.
 4. **Email.** Microsoft Graph hard-fails in production when misconfigured; threading headers persist. Live tenant outbound→inbound e2e is not run.
 5. **Meetings.** External scheduling URL + optional scheduling webhook; no first-party calendar.
 6. **Suite8 is historical local CRM evidence (pre skip-remediation).** Current local isolated p12 suite is **338/0/0**; suite6/suite7 belong in PRODUCTION_READINESS History only.

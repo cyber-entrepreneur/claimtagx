@@ -6,7 +6,7 @@ This document does not describe the product as an MVP, demo, proof of concept, s
 
 **Evidence as of:** 2026-09-08 (worktree `fwie`, branch `cursor/3b23f5cb`, source `83ca53e`). Bounded Suites A–D (not a combined A–E mega-matrix) plus engineering gates on isolated PG `127.0.0.1:55470`. See [COMPLETION_LEDGER.md](./COMPLETION_LEDGER.md).
 
-**Schema head:** **0020_crm_omnichannel_inbox.sql**.
+**Schema head:** **0023 identity-finalization migration**.
 
 **Email platform:** Microsoft Graph / Exchange Online (Resend/Svix are historical only — not production dependencies).
 
@@ -126,16 +126,16 @@ Not release gates. Full CRM suite at 0019 head is current local isolated evidenc
 
 | Item | Status | Evidence / notes | Remaining gap |
 | --- | --- | --- | --- |
-| HTTP RBAC matrix | **coded**; current local isolated suite PASS | `rbacHttp.pg.test.ts` in `tmp/crm-suite-full-p12d.log`; browser admin cases in Chromium 88×5 | Real Clerk tenant **BLOCKED** |
+| HTTP RBAC matrix | **coded**; current local isolated suite PASS | `rbacHttp.pg.test.ts` in `tmp/crm-suite-full-p12d.log`; browser admin cases in Chromium 88×5 | First-party auth staging matrix **NOT RUN** |
 | Admin rate limit | **coded**; current local isolated suite PASS | `adminRateLimit.pg.test.ts` in `tmp/crm-suite-full-p12d.log` | Multi-instance admin soak incomplete |
-| Object auth | **coded**; current local isolated suite PASS | `objectAuth.ts` + inquiry mutate / assign / bulk wired; tests in `tmp/crm-suite-full-p12d.log` | Full HTTP object-scope matrix beyond suite cases incomplete; Clerk **BLOCKED** |
+| Object auth | **coded**; current local isolated suite PASS | `objectAuth.ts` + inquiry mutate / assign / bulk wired; tests in `tmp/crm-suite-full-p12d.log` | Full HTTP object-scope matrix beyond suite cases incomplete; staging **NOT RUN** |
 | Keyset cursor | **coded** | inquiries list returns `nextCursor` | Client consumption + soak incomplete |
 | Bulk partial failure | **coded** | bulk assign/status return `succeeded` / `failed` | UI partial-failure UX completeness |
 | DSAR correct/delete + attachment export HTTP | **coded**; current local isolated suite PASS | `dsarExecution.pg.test.ts` + `dsarAttachmentExport.pg.test.ts` in `tmp/crm-suite-full-p12d.log` | Live DSAR / legal process **NOT RUN**; G-GOV still **FAIL** |
 | Duplicates endpoint | **coded** | `GET …/contacts/duplicates` | Product UX + merge workflow completeness |
 | Analytics drill-down | **coded** | inquiryType links on Analytics | Production dashboard **NOT RUN** |
 | Operations dead-letter UI | **coded** | dead-letter jobs surface / replay path | Production alerting **NOT RUN** |
-| Permission-aware inbox bulk gates | **coded** | bulk actions gated by permissions; exercised in admin Playwright | Real Clerk **BLOCKED** |
+| Permission-aware inbox bulk gates | **coded** | bulk actions gated by permissions; exercised in admin Playwright | First-party auth staging matrix **NOT RUN** |
 | inFlight source test | **coded**; current local isolated suite PASS | `inFlight.source.test.ts` in `tmp/crm-suite-full-p12d.log` | Production dual-worker soak **NOT RUN** |
 | Multiprocess harness isolation | **PASS** (local isolated only) | `tmp/dual-worker-soak1.log` PASS dual-process `SKIP LOCKED`; suite cases also in `tmp/crm-suite-full-p12d.log` | Production dual-worker soak **NOT RUN** |
 | Export jobs (0016) + saved views/audit (0017/0018) + staff routing (0019) | **coded**; current local isolated suite PASS | `exportJobs.ts`; SQL through 0019; `migrate.ts` baseline fingerprint refreshed | Staging/prod migrate **NOT RUN** |
@@ -187,8 +187,8 @@ These remediations do **not** constitute a production PASS.
 | G-WORKER | SKIP LOCKED worker | **FAIL** | `tmp/crm-suite-full-p12d.log` **338/0/0** plus `tmp/dual-worker-soak1.log` + ordering tests; production **NOT RUN** |
 | G-EMAIL | Graph send/receive e2e | **FAIL** | Simulator in `tmp/crm-suite-full-p12d.log` **338/0/0**; live tenant **BLOCKED** |
 | G-RL | DB rate limits | **FAIL** | PG-backed + admin limiter + local soak; production **NOT RUN** |
-| G-AUTH | Clerk-first | **FAIL** | Real Clerk tenant **NOT RUN** / **BLOCKED** |
-| G-RBAC | Permission matrix | **FAIL** | Unit + HTTP RBAC + objectAuth in `tmp/crm-suite-full-p12d.log` **338/0/0**; real Clerk **BLOCKED** |
+| G-AUTH | First-party auth | **FAIL** | Local first-party auth suite present; staging MFA/session/invite matrix **NOT RUN** |
+| G-RBAC | Permission matrix | **FAIL** | Unit + HTTP RBAC + objectAuth in `tmp/crm-suite-full-p12d.log` **338/0/0**; staging first-party roles **NOT RUN** |
 | G-OAPI | OpenAPI + codegen | **FAIL** | 112 catalog ops; Orval + drift + generated-client source gate PASS locally; release CI incomplete |
 | G-SLA | Calendars + pause/resume | **FAIL** | DST/zone tests + suite PASS; live scheduler soak incomplete |
 | G-CFG | Config change control | **FAIL** | Governed draft/review/approve/publish locally; staging **NOT RUN** |
@@ -205,7 +205,7 @@ These remediations do **not** constitute a production PASS.
 
 ## Remaining external authorization
 
-1. Real Clerk tenant and staff users (**BLOCKED**).
+1. Staging/production first-party auth users, MFA, password reset, invites, and session revocation (**NOT RUN**).
 2. Entra ID app + Exchange Online mailbox + reachable Graph notification URL (**BLOCKED** — live Graph).
 3. Staging/production hosts, DNS, migrate & soak.
 4. Qualified legal review of legal/marketing copy (**BLOCKED**).
