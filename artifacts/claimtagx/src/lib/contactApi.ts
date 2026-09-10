@@ -9,7 +9,6 @@ import {
   getSubmitContactInquiryUrl,
   platformAuthLogin,
   platformAuthLogout,
-  setAuthTokenGetter,
   setBaseUrl,
   submitContactInquiry,
   type ContactBootstrap,
@@ -35,15 +34,16 @@ export type CountryOption = ContactCountry;
 export type { ContactBootstrap };
 export type SubmitResult = ContactSubmitResponse;
 
-let platformTokenGetter: (() => Promise<string | null>) | null = null;
-
 /**
- * Wire Clerk `getToken` into the generated-client mutator (`customFetch`)
- * and the path-based Admin helper below.
+ * @deprecated First-party auth uses httpOnly cookie sessions (`credentials:
+ * "include"`), so no bearer token getter is required. This is a no-op stub
+ * kept only so any lingering importer keeps compiling. Do NOT store or wire
+ * session tokens through the browser.
  */
-export function setPlatformAuthTokenGetter(getter: (() => Promise<string | null>) | null): void {
-  platformTokenGetter = getter;
-  setAuthTokenGetter(getter);
+export function setPlatformAuthTokenGetter(
+  _getter: (() => Promise<string | null>) | null,
+): void {
+  // intentionally a no-op — cookie sessions only.
 }
 
 export function apiUrl(path: string): string {
@@ -74,9 +74,9 @@ export async function submitInquiry(body: unknown): Promise<ContactSubmitRespons
   }
 }
 
-export async function platformLogin(email: string, accessKey: string, name?: string) {
+export async function platformLogin(email: string, password: string) {
   try {
-    return await platformAuthLogin({ email, accessKey, name });
+    return await platformAuthLogin({ email, password });
   } catch (err) {
     if (err instanceof ApiError) {
       const data = (err.data ?? {}) as { error?: string };

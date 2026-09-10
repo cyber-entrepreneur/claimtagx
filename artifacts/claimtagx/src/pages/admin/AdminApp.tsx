@@ -10,8 +10,8 @@ import {
   Radio,
 } from "lucide-react";
 import { useEffect, useState } from "react";
-import { fetchPlatformMe, platformLogout } from "@/lib/contactApi";
-import AdminLogin from "./Login";
+import { AuthError, fetchSession, logout, logoutAll, type StaffSession } from "./authApi";
+import AdminLogin, { type SignInReason } from "./Login";
 import AdminInbox from "./Inbox";
 import InquiryWorkspace from "./InquiryWorkspace";
 import AdminConfig from "./Config";
@@ -21,18 +21,14 @@ import AdminMarketing from "./Marketing";
 import AdminAttachments from "./Attachments";
 import ChannelHealth from "./ChannelHealth";
 
-interface Me {
-  id: string;
-  email: string;
-  name: string;
-  role: string;
-  permissions: string[];
-}
+type Me = StaffSession;
 
 export default function AdminApp() {
   const [me, setMe] = useState<Me | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [reason, setReason] = useState<SignInReason | undefined>(undefined);
+  const [confirmSignOut, setConfirmSignOut] = useState(false);
   const [location] = useLocation();
 
   useEffect(() => {
@@ -44,22 +40,29 @@ export default function AdminApp() {
       const controller = new AbortController();
       const timer = window.setTimeout(() => controller.abort(), 20_000);
       try {
-        const data = await fetchPlatformMe({ signal: controller.signal });
+        // fetchSession resolves to null on 401 (unauthenticated) and only
+        // throws for suspended (403), network, or unexpected server errors.
+        const data = await fetchSession({ signal: controller.signal });
         if (cancelled) return;
         setMe(data);
         setLoadError(null);
       } catch (err) {
         if (cancelled) return;
-        const aborted =
-          typeof err === "object" && err !== null && "name" in err && (err as { name: string }).name === "AbortError";
-        if (aborted && attempt < 2) {
+        if (err instanceof AuthError && err.code === "suspended") {
+          setMe(null);
+          setReason("suspended");
+          return;
+        }
+        if (err instanceof AuthError && err.code === "network" && attempt < 2) {
           await load(attempt + 1);
           return;
         }
         setMe(null);
-        const status = err instanceof Error && "status" in err ? (err as { status?: number }).status : undefined;
-        if (aborted) setLoadError("The admin API did not respond. Retry or confirm VITE_API_URL.");
-        else if (status && status !== 401) setLoadError(err instanceof Error ? err.message : "Workspace unavailable");
+        if (err instanceof AuthError && err.code === "network") {
+          setLoadError("The admin API did not respond. Retry or confirm VITE_API_URL.");
+        } else {
+          setLoadError(err instanceof Error ? err.message : "Workspace unavailable");
+        }
       } finally {
         window.clearTimeout(timer);
       }
@@ -73,6 +76,19 @@ export default function AdminApp() {
       cancelled = true;
     };
   }, []);
+
+  const handleSignOut = async (everywhere: boolean) => {
+    try {
+      if (everywhere) await logoutAll();
+      else await logout();
+    } catch {
+      // Even if the network call fails, drop local session state so the
+      // operator is returned to the sign-in surface.
+    }
+    setConfirmSignOut(false);
+    setMe(null);
+    setReason(everywhere ? "signed_out_all" : "signed_out");
+  };
 
   if (loading) {
     return <div className="min-h-screen bg-obsidian text-ink grid place-items-center">Loading workspace…</div>;
@@ -89,7 +105,7 @@ export default function AdminApp() {
       </div>
     );
   }
-  if (!me) return <AdminLogin onAuthed={setMe} />;
+  if (!me) return <AdminLogin onAuthed={setMe} reason={reason} />;
 
   const nav = [
     { href: "/admin/contact", label: "Inbox", icon: Inbox, permission: "inquiries.view" },
@@ -135,15 +151,46 @@ export default function AdminApp() {
         <div className="mt-auto pt-6 text-xs text-ink">
           <p className="text-white font-medium truncate">{me.name}</p>
           <p className="truncate">{me.email}</p>
-          <button
-            className="mt-3 inline-flex items-center gap-1 hover:text-white"
-            onClick={async () => {
-              await platformLogout();
-              setMe(null);
-            }}
-          >
-            <LogOut className="w-3 h-3" /> Sign out
-          </button>
+          {confirmSignOut ? (
+            <div
+              className="mt-3 space-y-2"
+              role="group"
+              aria-label="Confirm sign out"
+            >
+              <p className="text-white">Sign out?</p>
+              <div className="flex flex-col gap-1.5">
+                <button
+                  type="button"
+                  className="inline-flex items-center gap-1 rounded-md border border-white/10 px-2 py-1 text-left hover:text-white focus:outline-none focus:ring-2 focus:ring-lime"
+                  onClick={() => void handleSignOut(false)}
+                >
+                  <LogOut className="w-3 h-3" /> This device
+                </button>
+                <button
+                  type="button"
+                  className="inline-flex items-center gap-1 rounded-md border border-white/10 px-2 py-1 text-left hover:text-white focus:outline-none focus:ring-2 focus:ring-lime"
+                  onClick={() => void handleSignOut(true)}
+                >
+                  <LogOut className="w-3 h-3" /> All devices
+                </button>
+                <button
+                  type="button"
+                  className="text-left hover:text-white focus:outline-none focus:ring-2 focus:ring-lime rounded"
+                  onClick={() => setConfirmSignOut(false)}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          ) : (
+            <button
+              type="button"
+              className="mt-3 inline-flex items-center gap-1 hover:text-white focus:outline-none focus:ring-2 focus:ring-lime rounded"
+              onClick={() => setConfirmSignOut(true)}
+            >
+              <LogOut className="w-3 h-3" /> Sign out
+            </button>
+          )}
         </div>
       </aside>
       <div className="flex-1 min-w-0">

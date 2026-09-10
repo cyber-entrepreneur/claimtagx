@@ -86,12 +86,17 @@ export default defineConfig({
       },
     },
   },
-  optimizeDeps: {
-    exclude: ["@clerk/react", "@clerk/shared"],
-  },
   preview: {
     port,
     host: process.env.VITE_LISTEN_HOST ?? "127.0.0.1",
     allowedHosts: true,
+    // Same-origin /api proxy so first-party cookie sessions work in preview/E2E
+    // (cross-origin absolute VITE_API_URL cannot set HttpOnly cookies for the SPA origin).
+    proxy: {
+      "/api": {
+        target: process.env.VITE_API_PROXY_TARGET ?? "http://127.0.0.1:18080",
+        changeOrigin: true,
+      },
+    },
   },
 });

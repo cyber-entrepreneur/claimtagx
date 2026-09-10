@@ -156,7 +156,7 @@ export default function SettingsPerformance() {
     }).length;
     const jobs = list.filter((r) => r.status === "claimed").length;
 
-    const closed = list.filter((r) => r.status === "closed").length;
+    const closed = list.filter((r) => r.status === "done").length;
     const cancelled = list.filter((r) => r.status === "cancelled").length;
 
     return { assignments, tasks, jobs, closed, cancelled };

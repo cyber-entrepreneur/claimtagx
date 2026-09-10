@@ -2,6 +2,7 @@ import { expect, type Page } from "@playwright/test";
 import { installE2eStability } from "./a11y-helpers";
 
 const apiRoot = process.env.CRM_E2E_API ?? "http://127.0.0.1:18080";
+const AUTH_COOKIE = "ctx_auth_session";
 
 export async function assertApiAlive(page: Page) {
   try {
@@ -30,11 +31,11 @@ export async function installPlatformAuth(page: Page, staffId: string) {
       expect(login.ok(), `test-login ${login.status()} ${await login.text()}`).toBeTruthy();
       const raw = login.headers()["set-cookie"];
       const cookieHeader = Array.isArray(raw) ? raw.join("\n") : String(raw ?? "");
-      const match = /ctx_platform_session=([^;]+)/.exec(cookieHeader);
+      const match = new RegExp(`${AUTH_COOKIE}=([^;]+)`).exec(cookieHeader);
       expect(match, `session cookie missing from: ${cookieHeader}`).toBeTruthy();
       await page.context().addCookies([
         {
-          name: "ctx_platform_session",
+          name: AUTH_COOKIE,
           value: decodeURIComponent(match![1]),
           domain: "127.0.0.1",
           path: "/",
