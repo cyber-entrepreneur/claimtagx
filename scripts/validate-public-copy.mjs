@@ -63,7 +63,6 @@ const ALLOWLIST_LITERALS = new Set([
   "TLS",
   "AWS",
   "Azure",
-  "Clerk",
   "Paddle",
   "OpenAPI",
   "Ed25519",
@@ -182,7 +181,7 @@ function classify({ rel, text, index, kind, literal: lit }) {
   }
   if (
     ALLOWLIST_LITERALS.has(lit.trim()) ||
-    (lit.split(/\s+/).length <= 3 && /ClaimTagX|Microsoft|Paddle|Clerk/.test(lit))
+    (lit.split(/\s+/).length <= 3 && /ClaimTagX|Microsoft|Paddle/.test(lit))
   ) {
     return { category: "proper_noun", line, kind };
   }

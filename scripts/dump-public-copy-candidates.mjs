@@ -29,7 +29,7 @@ const SKIP_PATH_PARTS = [
 ];
 const STRING_LITERAL = /(?<![\w$])(["'`])((?:(?!\1)[\s\S]){12,}?)\1/g;
 const ALLOWLIST_LITERALS = [
-  "ClaimTagX","Microsoft","Graph","GDPR","CCPA","SOC 2","ISO 27001","QR","API","SLA","CRM","HTTPS","TLS","AWS","Azure","Clerk","Paddle","OpenAPI","Playwright","Chrome","Firefox","WebKit",
+  "ClaimTagX","Microsoft","Graph","GDPR","CCPA","SOC 2","ISO 27001","QR","API","SLA","CRM","HTTPS","TLS","AWS","Azure","Paddle","OpenAPI","Playwright","Chrome","Firefox","WebKit",
 ];
 
 function walk(path) {
@@ -68,7 +68,7 @@ function classifyLiteral(literal) {
   if (ALLOWLIST_LITERALS.some((a) => t === a || (t.includes(a) && t.length < a.length + 8))) return "approved_non_translatable";
   if (/^https?:\/\//i.test(t) || /^\/[a-z0-9\-_/]*$/i.test(t)) return "technical_token";
   if (/^[A-Z_0-9]+$/.test(t)) return "technical_token";
-  if (/ClaimTagX|Microsoft|Graph|Paddle|Clerk|OpenAPI/.test(t) && t.split(/\s+/).length <= 4) return "proper_noun";
+  if (/ClaimTagX|Microsoft|Graph|Paddle|OpenAPI/.test(t) && t.split(/\s+/).length <= 4) return "proper_noun";
   if (looksLikeUserFacingCopy(t)) return "localization_defect_candidate";
   return "technical_token";
 }
