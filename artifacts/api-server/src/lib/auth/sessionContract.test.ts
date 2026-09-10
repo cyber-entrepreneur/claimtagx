@@ -12,7 +12,7 @@ import {
   hashToken,
 } from "../../../../../lib/first-party-auth/src/index.ts";
 
-const PROD_ORIGINS = "https://claimtagx.com,https://api.claimtagx.com";
+const PROD_ORIGINS = "https://claimtagx.com,https://www.claimtagx.com";
 
 const MUTATED_ENV_KEYS = ["NODE_ENV", "CORS_ALLOWED_ORIGINS"];
 const apiRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
@@ -40,7 +40,7 @@ describe("first-party session contract", () => {
     assert.match(composeSource, /export const AUTH_SESSION_COOKIE = "ctx_auth_session"/);
     assert.match(composeSource, /httpOnly:\s*true/);
     assert.match(composeSource, /secure:\s*prod/);
-    assert.match(composeSource, /sameSite:\s*prod \? "none" : "lax"/);
+    assert.match(composeSource, /sameSite:\s*"lax"/);
     assert.match(composeSource, /path:\s*"\/"/);
     assert.match(composeSource, /SESSION_COOKIE_MAX_AGE_MS = 30 \* 24 \* 60 \* 60 \* 1000/);
   });
@@ -69,7 +69,8 @@ describe("first-party session contract", () => {
   it("reflects only configured production origins for credentialed CORS", async () => {
     await withEnv({ NODE_ENV: "production", CORS_ALLOWED_ORIGINS: PROD_ORIGINS }, async () => {
       assert.equal(isCredentialedOriginAllowed("https://claimtagx.com"), true);
-      assert.equal(isCredentialedOriginAllowed("https://api.claimtagx.com"), true);
+      assert.equal(isCredentialedOriginAllowed("https://www.claimtagx.com"), true);
+      assert.equal(isCredentialedOriginAllowed("https://api.claimtagx.com"), false);
       assert.equal(isCredentialedOriginAllowed("https://evil.example"), false);
       assert.equal(isCredentialedOriginAllowed("https://claimtagx.com.evil.example"), false);
     });

@@ -4415,9 +4415,10 @@ components:
       in: cookie
       name: ctx_auth_session
       description: >
-        First-party opaque session cookie (`ctx_auth_session`). HttpOnly, Secure,
-        `SameSite=None` in production (so the SPA on a different origin can send it
-        cross-site), `path=/`. Its value is an opaque refresh token backed by the
+        First-party opaque session cookie (`ctx_auth_session`). HttpOnly, host-only
+        (no Domain), `SameSite=Lax`, `path=/`; Secure in production. claimtagx.com
+        and api.claimtagx.com are schemeful same-site, so Lax covers SPA→API
+        credentialed calls. Its value is an opaque refresh token backed by the
         first-party auth platform; only its hash is persisted server-side.
         Cookie-bearing writes are additionally protected by an Origin allow-list
         (CSRF) check.

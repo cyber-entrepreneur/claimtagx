@@ -38,7 +38,7 @@ Optional / tunable (secure defaults in code):
 | `TRUST_PROXY_HOPS` | `0` (off) | Express `trust proxy` hop count behind Railway/CDN. |
 | `MS_GRAPH_MAILBOX_UPN` | `exchange-mailbox` | Sending mailbox UPN. |
 | `MS_GRAPH_ALLOWED_HOSTS` | *(empty in prod)* | Graph egress host allow-list. |
-| `NODE_ENV` | — | `production` enables Secure/SameSite=None cookies and hard secret checks. |
+| `NODE_ENV` | — | `production` enables Secure cookies and hard secret checks. |
 | `LISTEN_HOST` | `lib/crm/listenHost.ts` | Required in production; bind address for the HTTP server. |
 | `PUBLIC_SITE_URL` | `composeAuthPlatform.ts`, invite email | Optional API-side alias for public site origin (deep links). Prefer setting this on the API if `VITE_SITE_URL` is not available at runtime. |
 | `CRM_EMBED_WORKER` | `index.ts` | Prefer `false` on the API service when a dedicated worker process runs; `true` embeds the worker loop in the API process. |
@@ -53,20 +53,22 @@ Recommended production boundary:
 - Public site / SPA origin: `https://claimtagx.com`
 - API origin: `https://api.claimtagx.com`
 
-Set `CORS_ALLOWED_ORIGINS=https://claimtagx.com,https://api.claimtagx.com`
-on the API for credentialed browser calls and cookie-CSRF origin checks. The
-session cookie is always named `ctx_auth_session`, is `HttpOnly`, and uses
-`Path=/`. In production (`NODE_ENV=production`) it is emitted as
-`Secure; SameSite=None` so `https://claimtagx.com` can send it to
-`https://api.claimtagx.com` on cross-site XHR/fetch requests.
+Set `CORS_ALLOWED_ORIGINS=https://claimtagx.com,https://www.claimtagx.com`
+on the API for credentialed browser calls and cookie-CSRF origin checks. Do not
+list `https://api.claimtagx.com` unless a browser origin there needs credentials.
+The session cookie is always named `ctx_auth_session`, is `HttpOnly`, host-only
+(no `Domain` attribute), and uses `Path=/` + `SameSite=Lax`. In production
+(`NODE_ENV=production`) it is also `Secure`. Because `claimtagx.com` and
+`api.claimtagx.com` are schemeful same-site, Lax is sufficient for SPA→API
+credentialed fetch; Origin allow-listing still blocks hostile sites.
 
 Temporary Railway domains such as `*.up.railway.app` are useful for smoke
 testing, but they are not the intended durable browser boundary. Keep
-`NODE_ENV=production` there so cookies remain `Secure; SameSite=None`; browsers
-will only send them over HTTPS, and every temporary frontend/API origin that
+`NODE_ENV=production` there so cookies remain `Secure; SameSite=Lax`; browsers
+will only send them over HTTPS, and every temporary frontend origin that
 needs credentialed requests must be listed exactly in `CORS_ALLOWED_ORIGINS`.
-For local non-production HTTP (`NODE_ENV` not `production`), the API relaxes the
-cookie to `SameSite=Lax` and `Secure=false` for loopback development only.
+For local non-production HTTP (`NODE_ENV` not `production`), the API keeps
+`SameSite=Lax` and sets `Secure=false` for loopback development only.
 
 Non-production only (must be OFF/absent in production):
 

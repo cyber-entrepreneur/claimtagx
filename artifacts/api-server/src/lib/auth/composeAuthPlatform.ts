@@ -64,10 +64,11 @@ import { logger } from "../logger";
 
 /**
  * Single first-party session cookie shared by CRM (Platform Admin) and Handler.
- * HttpOnly + Secure + SameSite=None in production so the SPA(s) on a different
- * origin can send it cross-site; path=/ so it applies to the whole API. In
- * non-production we relax to SameSite=Lax over http for local dev. CSRF is
- * enforced by an Origin allow-list check in `app.ts` for cookie-bearing writes.
+ * HttpOnly + host-only (no Domain attribute) + Path=/ + SameSite=Lax always.
+ * Production adds Secure. claimtagx.com ↔ api.claimtagx.com is schemeful
+ * same-site, so Lax is sufficient for credentialed SPA→API calls; CSRF is
+ * still enforced by an Origin allow-list check in `app.ts` for cookie-bearing
+ * writes. Non-production keeps Secure=false for loopback HTTP.
  */
 export const AUTH_SESSION_COOKIE = "ctx_auth_session";
 
@@ -76,7 +77,7 @@ const SESSION_COOKIE_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000; // 30d (refresh TTL)
 export function authCookieOptions(): {
   httpOnly: true;
   secure: boolean;
-  sameSite: "none" | "lax";
+  sameSite: "lax";
   path: "/";
   maxAge: number;
 } {
@@ -84,8 +85,7 @@ export function authCookieOptions(): {
   return {
     httpOnly: true,
     secure: prod,
-    // SameSite=None requires Secure; only valid in production over https.
-    sameSite: prod ? "none" : "lax",
+    sameSite: "lax",
     path: "/",
     maxAge: SESSION_COOKIE_MAX_AGE_MS,
   };

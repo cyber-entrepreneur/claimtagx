@@ -22,7 +22,7 @@ removed from the API and the Handler identity path.
 ## One identity system, two surfaces
 
 - The shared session cookie is `ctx_auth_session` (HttpOnly, Secure,
-  `SameSite=None` in production, `path=/`). It carries an **opaque refresh
+  `SameSite=Lax` always, `Secure` in production, `path=/`). It carries an **opaque refresh
   token**; only its hash is persisted.
 - Non-browser Handler API clients may instead send an opaque
   `Authorization: Bearer` access (or refresh) token.

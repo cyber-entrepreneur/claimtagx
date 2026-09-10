@@ -31,7 +31,7 @@
 4. **PostgreSQL rate limiter** for multi-instance API.
 5. **Graph `CodeDeliverer`** enqueueing durable effects (token never logged).
 6. **Identity link:** `crm_staff.auth_account_id` (additive), finalized by `0023`.
-7. **Cookies:** `HttpOnly` + `Secure` + `SameSite=None` when API is cross-site to Cloudflare Pages; document `api.claimtagx.com` preference.
+7. **Cookies:** `HttpOnly` + host-only + `Secure` (prod) + `SameSite=Lax`; document `api.claimtagx.com` preference and schemeful same-site with the SPA.
 8. Ignore Plug&Play hosted-IdP recommendations.
 
 ## Integration seams
