@@ -1,11 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "wouter";
-import { motion } from "framer-motion";
+import { motion, useReducedMotion } from "framer-motion";
 import { AsYouType, parsePhoneNumberFromString } from "libphonenumber-js/max";
 import { Check, ChevronDown, Loader2 } from "lucide-react";
 import SEO from "@/components/SEO";
-import { track } from "@/lib/analytics";
-import { fetchBootstrap, submitInquiry } from "@/lib/contactApi";
+import { isOptionalAnalyticsConsentGranted, track } from "@/lib/analytics";
+import { fetchBootstrap, mapContactSubmitError, submitInquiry } from "@/lib/contactApi";
+import { TurnstileField } from "@/lib/contactTurnstile";
+import { isSafePublicBookingUrl } from "@/lib/bookingUrl";
+import { useI18n } from "@/lib/i18n";
+import { localizedAbsoluteUrl } from "@/lib/seo/siteConfig";
+import { contactPageJsonLd } from "@/lib/seo/structuredData";
 import {
   BILLING_QUESTIONS,
   buildCountryList,
@@ -20,6 +25,21 @@ import {
 } from "@/lib/contactCatalog";
 
 const COUNTRIES = buildCountryList();
+
+const ERROR_FOCUS: Record<string, string> = {
+  inquiryType: '[name="inquiryType"]',
+  firstName: "#firstName",
+  lastName: "#lastName",
+  jobTitle: "#jobTitle",
+  companyName: "#companyName",
+  email: "#email",
+  country: "#country-search",
+  phone: "#phone",
+  useCase: "#use-case-group",
+  useCaseOther: "#useCaseOther",
+  message: "#message",
+  consent: "#consent",
+};
 
 function flagEmoji(code: string): string {
   return code
@@ -54,9 +74,11 @@ function attribution() {
 }
 
 const fieldClass =
-  "w-full rounded-xl border border-white/10 bg-white/[0.04] px-4 py-3 text-white placeholder:text-slate/70 focus:outline-none focus:ring-2 focus:ring-lime/60 focus:border-lime/40";
+  "w-full rounded-xl border border-white/10 bg-steel px-4 py-3 text-white placeholder:text-ink-muted focus:outline-none focus-visible:ring-2 focus-visible:ring-lime focus-visible:border-lime";
 
 export default function Contact() {
+  const { t, locale } = useI18n();
+  const reduceMotion = useReducedMotion();
   const [countries] = useState(COUNTRIES);
   const [useCaseOptions, setUseCaseOptions] = useState(() => useCasesFromTaxonomy([]));
   const [salesQuestions, setSalesQuestions] = useState<CatalogQuestion[]>(() =>
@@ -65,6 +87,7 @@ export default function Contact() {
   const [inquiryType, setInquiryType] = useState<InquiryType | null>(null);
   const [countryOpen, setCountryOpen] = useState(false);
   const [countryQuery, setCountryQuery] = useState("");
+  const [countryHighlight, setCountryHighlight] = useState(0);
   const [country, setCountry] = useState(() => localeCountryGuess() ?? "");
   const [detectedCountry, setDetectedCountry] = useState<string | null>(null);
   const [phoneNational, setPhoneNational] = useState("");
@@ -83,10 +106,32 @@ export default function Contact() {
     meetingUrl: string | null;
   } | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [botSiteKey, setBotSiteKey] = useState("");
+  const [botAction, setBotAction] = useState("contact_submit");
+  const [botProofRequired, setBotProofRequired] = useState(false);
+  const [botProof, setBotProof] = useState("");
+  const [offline, setOffline] = useState(
+    typeof navigator !== "undefined" ? !navigator.onLine : false,
+  );
   const started = useRef(false);
   const idempotencyKey = useRef(crypto.randomUUID());
   const formRef = useRef<HTMLFormElement>(null);
   const countryBoxRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function onOnline() {
+      setOffline(false);
+    }
+    function onOffline() {
+      setOffline(true);
+    }
+    window.addEventListener("online", onOnline);
+    window.addEventListener("offline", onOffline);
+    return () => {
+      window.removeEventListener("online", onOnline);
+      window.removeEventListener("offline", onOffline);
+    };
+  }, []);
 
   useEffect(() => {
     track("form_view", { form: "contact_us" });
@@ -100,6 +145,11 @@ export default function Contact() {
         setDetectedCountry(data.detectedCountry);
         setCountry(data.detectedCountry);
       }
+      const bot = (data as { botProtection?: { siteKey?: string; action?: string; proofRequired?: boolean } })
+        .botProtection;
+      if (bot?.siteKey) setBotSiteKey(bot.siteKey);
+      if (bot?.action) setBotAction(bot.action);
+      setBotProofRequired(Boolean(bot?.proofRequired));
     });
   }, []);
 
@@ -124,6 +174,13 @@ export default function Contact() {
         c.callingCode.includes(q.replace(/^\+/, "")),
     );
   }, [countries, countryQuery]);
+
+  useEffect(() => {
+    setCountryHighlight((i) => {
+      if (!filteredCountries.length) return 0;
+      return Math.min(i, filteredCountries.length - 1);
+    });
+  }, [filteredCountries]);
 
   function markStarted() {
     if (started.current) return;
@@ -171,46 +228,62 @@ export default function Contact() {
     markStarted();
   }
 
+  function focusField(key: string) {
+    const selector = ERROR_FOCUS[key];
+    const el = (selector ? formRef.current?.querySelector(selector) : null) as HTMLElement | null;
+    el?.focus({ preventScroll: true });
+    el?.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "center" });
+  }
+
   function validate(form: FormData): Record<string, string> {
     const next: Record<string, string> = {};
-    if (!inquiryType) next.inquiryType = "Select what this inquiry is about.";
+    if (!inquiryType) next.inquiryType = t("contact.errors.inquiryType");
     const firstName = String(form.get("firstName") ?? "").trim();
     const lastName = String(form.get("lastName") ?? "").trim();
     const jobTitle = String(form.get("jobTitle") ?? "").trim();
     const companyName = String(form.get("companyName") ?? "").trim();
     const email = String(form.get("email") ?? "").trim();
     const message = String(form.get("message") ?? "").trim();
-    if (!firstName) next.firstName = "Enter your first name.";
-    if (!lastName) next.lastName = "Enter your last name.";
-    if (!jobTitle) next.jobTitle = "Enter your job title.";
-    if (!companyName) next.companyName = "Enter your company name.";
-    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) next.email = "Enter a valid email address.";
-    if (!country) next.country = "Select your country.";
+    if (!firstName) next.firstName = t("contact.errors.firstName");
+    if (!lastName) next.lastName = t("contact.errors.lastName");
+    if (!jobTitle) next.jobTitle = t("contact.errors.jobTitle");
+    if (!companyName) next.companyName = t("contact.errors.companyName");
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) next.email = t("contact.errors.email");
+    if (!country) next.country = t("contact.errors.country");
     const parsed = country
       ? parsePhoneNumberFromString(`${callingCode} ${phoneNational}`, country as never)
       : undefined;
-    if (!parsed?.isValid()) next.phone = "Enter a valid phone number for the selected country.";
+    if (!parsed?.isValid()) next.phone = t("contact.errors.phone");
     if (inquiryType === "sales") {
-      if (useCases.length === 0) next.useCase = "Select at least one use case.";
+      if (useCases.length === 0) next.useCase = t("contact.errors.useCase");
       if (useCases.includes("other") && !useCaseOther.trim()) {
-        next.useCaseOther = "Please specify your use case.";
+        next.useCaseOther = t("contact.errors.useCaseOther");
       }
     }
-    if (message.length < 10) next.message = "Tell us a little more so we can route your inquiry.";
-    if (!consent) next.consent = "Please agree to the Terms and Privacy Policy.";
+    if (inquiryType && message.length < 10) next.message = t("contact.errors.message");
+    if (!consent) next.consent = t("contact.errors.consent");
     return next;
   }
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    if (submitting || !inquiryType) return;
+    if (submitting) return;
+    if (offline) {
+      setSubmitError(t("common.offline"));
+      return;
+    }
     const form = new FormData(e.currentTarget);
     const nextErrors = validate(form);
     setErrors(nextErrors);
     if (Object.keys(nextErrors).length) {
       track("form_field_error", { fields: Object.keys(nextErrors) });
       const first = Object.keys(nextErrors)[0];
-      e.currentTarget.querySelector(`[name="${first}"]`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+      requestAnimationFrame(() => focusField(first));
+      return;
+    }
+    if (!inquiryType) return;
+    if (botProofRequired && !botProof) {
+      setSubmitError(t("contact.errors.securityCheck"));
       return;
     }
     setSubmitting(true);
@@ -242,9 +315,14 @@ export default function Contact() {
         answers: inquiryType === "general" || inquiryType === "other" ? {} : answers,
         termsAccepted: true,
         locale: navigator.language,
-        attribution: { ...attribution(), inquiry_type: inquiryType },
+        attribution: {
+          ...attribution(),
+          inquiry_type: inquiryType,
+          analyticsConsent: isOptionalAnalyticsConsentGranted(),
+        },
         idempotencyKey: idempotencyKey.current,
         honeypot: String(form.get("companyWebsite") ?? ""),
+        ...(botProof ? { botProof } : {}),
       });
       track("submission_succeeded", { qualified: data.qualified, inquiry_type: inquiryType });
       if (data.qualified) {
@@ -259,11 +337,7 @@ export default function Contact() {
       });
     } catch (err) {
       track("submission_failed", {});
-      setSubmitError(
-        err instanceof Error
-          ? err.message
-          : "We couldn't submit your inquiry. Your information has been preserved. Please try again.",
-      );
+      setSubmitError(mapContactSubmitError(err, t));
     } finally {
       setSubmitting(false);
     }
@@ -278,37 +352,50 @@ export default function Contact() {
       : inquiryType === "billing"
         ? BILLING_QUESTIONS
         : [];
+  const errorEntries = Object.entries(errors);
+  const activeCountryOption = countryOpen ? filteredCountries[countryHighlight] : undefined;
+
+  const contactUrl = localizedAbsoluteUrl("/contact", locale);
 
   return (
     <>
       <SEO
-        title="Contact ClaimTagX"
-        description="Contact ClaimTagX. We'll route your inquiry to the right team."
-        url="https://claimtagx.com/contact"
+        title={t("contact.title")}
+        description={t("contact.subtitle")}
+        url={contactUrl}
+        path="/contact"
+        jsonLd={contactPageJsonLd({ url: contactUrl, locale })}
       />
       <section className="relative min-h-[calc(100svh-4.5rem)]">
         <div className="absolute inset-0 bg-gradient-mesh pointer-events-none" />
         <div className="absolute inset-0 bg-grid-pattern opacity-40 pointer-events-none" />
-        <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-28 md:pt-32 pb-20 grid lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] gap-12 lg:gap-16 items-start">
+        <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-36 md:pt-32 pb-20 grid lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] gap-12 lg:gap-16 items-start">
           <motion.div
-            initial={{ opacity: 0, y: 16 }}
+            initial={reduceMotion ? false : { opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6 }}
+            transition={{ duration: reduceMotion ? 0 : 0.6 }}
             className="lg:sticky lg:top-28"
           >
-            <p className="text-lime font-mono text-xs tracking-[0.2em] uppercase mb-4">Contact</p>
+            <p className="text-lime font-mono text-xs tracking-[0.2em] uppercase mb-4">{t("contact.eyebrow")}</p>
             <h1 className="text-4xl md:text-6xl font-extrabold text-white tracking-tight leading-[1.05] mb-6">
-              Contact ClaimTagX
+              {t("contact.title")}
             </h1>
-            <p className="text-lg text-slate max-w-md leading-relaxed">
-              Tell us about your operation. We'll route your inquiry to the person who can actually help.
+            <p className="text-lg text-ink max-w-md leading-relaxed">{t("contact.subtitle")}</p>
+            <p className="text-sm text-ink mt-6">
+              {t("contact.preferEmail")}{" "}
+              <a
+                href="mailto:info@claimtagx.com"
+                className="text-lime underline underline-offset-2"
+              >
+                {t("contact.sendEmail")}
+              </a>
             </p>
           </motion.div>
 
           <motion.div
-            initial={{ opacity: 0, y: 24 }}
+            initial={reduceMotion ? false : { opacity: 0, y: 24 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.7, delay: 0.08 }}
+            transition={{ duration: reduceMotion ? 0 : 0.7, delay: reduceMotion ? 0 : 0.08 }}
           >
             {result ? (
               <Confirmation result={result} />
@@ -319,10 +406,61 @@ export default function Contact() {
                 onChange={markStarted}
                 className="space-y-6"
                 noValidate
+                data-testid="contact-form"
               >
+                {(offline || submitError) && (
+                  <div
+                    role="alert"
+                    className="rounded-xl border border-amber-400/40 bg-amber-500/10 px-4 py-3 flex flex-wrap items-center justify-between gap-3"
+                    data-testid="contact-submit-alert"
+                  >
+                    <p className="text-sm text-amber-100">{offline ? t("common.offline") : submitError}</p>
+                    {!offline && submitError && (
+                      <button
+                        type="button"
+                        className="text-sm font-semibold text-lime underline underline-offset-2"
+                        onClick={() => {
+                          setSubmitError(null);
+                          formRef.current?.requestSubmit();
+                        }}
+                      >
+                        {t("common.retry")}
+                      </button>
+                    )}
+                  </div>
+                )}
+
+                {errorEntries.length > 0 && (
+                  <div
+                    role="alert"
+                    className="rounded-xl border border-red-400/40 bg-red-500/10 px-4 py-3"
+                  >
+                    <p className="text-sm font-medium text-white mb-2">
+                      {errorEntries.length === 1 ? t("contact.fixIssues") : t("contact.fixIssuesPlural")}:
+                    </p>
+                    <ul className="list-disc pl-5 space-y-1">
+                      {errorEntries.map(([key, message]) => (
+                        <li key={key}>
+                          <button
+                            type="button"
+                            className="text-left text-sm text-red-200 underline underline-offset-2"
+                            onClick={() => focusField(key)}
+                          >
+                            {message}
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
                 <fieldset>
                   <legend className="text-sm font-medium text-white mb-3">
-                    What can we help you with?
+                    {t("contact.helpWith")}{" "}
+                    <span aria-hidden="true" className="text-lime">
+                      *
+                    </span>
+                    <span className="sr-only">required</span>
                   </legend>
                   <div className="flex flex-wrap gap-2">
                     {INQUIRY_TYPES.map((opt) => {
@@ -331,40 +469,63 @@ export default function Contact() {
                         <button
                           key={opt.key}
                           type="button"
+                          id={`inquiry-type-${opt.key}`}
                           name="inquiryType"
                           aria-pressed={on}
                           onClick={() => selectInquiryType(opt.key)}
+                          data-testid={`inquiry-type-${opt.key}`}
                           className={`px-3 py-2 rounded-full text-sm border transition ${
                             on
                               ? "bg-lime text-obsidian border-lime"
-                              : "border-white/10 text-slate hover:border-lime/40 hover:text-white"
+                              : "border-white/10 text-ink hover:border-lime/40 hover:text-white"
                           }`}
                         >
-                          {opt.label}
+                          {t(`contact.inquiryTypes.${opt.key}`)}
                         </button>
                       );
                     })}
                   </div>
                   {errors.inquiryType && (
-                    <p className="text-red-300 text-sm mt-2">{errors.inquiryType}</p>
+                    <p id="inquiryType-error" className="text-red-300 text-sm mt-2">
+                      {errors.inquiryType}
+                    </p>
                   )}
                 </fieldset>
 
                 {inquiryType && (
                   <>
                     <div className="grid sm:grid-cols-2 gap-4">
-                      <Field label="First name" name="firstName" error={errors.firstName} required />
-                      <Field label="Last name" name="lastName" error={errors.lastName} required />
+                      <Field
+                        label={t("contact.firstName")}
+                        name="firstName"
+                        error={errors.firstName}
+                        required
+                        autoComplete="given-name"
+                      />
+                      <Field
+                        label={t("contact.lastName")}
+                        name="lastName"
+                        error={errors.lastName}
+                        required
+                        autoComplete="family-name"
+                      />
                     </div>
-                    <Field label="Job title" name="jobTitle" error={errors.jobTitle} required />
                     <Field
-                      label="Company name"
+                      label={t("contact.jobTitle")}
+                      name="jobTitle"
+                      error={errors.jobTitle}
+                      required
+                      autoComplete="organization-title"
+                    />
+                    <Field
+                      label={t("contact.companyName")}
                       name="companyName"
                       error={errors.companyName}
                       required
+                      autoComplete="organization"
                     />
                     <Field
-                      label="Email address"
+                      label={t("contact.email")}
                       name="email"
                       type="email"
                       error={errors.email}
@@ -379,13 +540,18 @@ export default function Contact() {
                             className="block text-sm font-medium text-white mb-2"
                             htmlFor="country-search"
                           >
-                            Country
+                            {t("contact.country")}{" "}
+                            <span aria-hidden="true" className="text-lime">
+                              *
+                            </span>
+                            <span className="sr-only">{t("contact.required")}</span>
                           </label>
                           <div className="relative">
                             <input
                               id="country-search"
                               name="country"
                               autoComplete="country-name"
+                              required
                               value={
                                 countryOpen
                                   ? countryQuery
@@ -393,23 +559,55 @@ export default function Contact() {
                                     ? selectedCountry.name
                                     : countryQuery
                               }
-                              placeholder="Search country"
+                              placeholder={t("contact.searchCountry")}
                               onFocus={() => {
                                 setCountryOpen(true);
                                 setCountryQuery("");
+                                const idx = filteredCountries.findIndex((c) => c.code === country);
+                                setCountryHighlight(idx >= 0 ? idx : 0);
                               }}
                               onChange={(e) => {
                                 setCountryOpen(true);
                                 setCountryQuery(e.target.value);
+                                setCountryHighlight(0);
                                 markStarted();
+                              }}
+                              onKeyDown={(e) => {
+                                if (e.key === "ArrowDown") {
+                                  e.preventDefault();
+                                  setCountryOpen(true);
+                                  setCountryHighlight((i) =>
+                                    Math.min(i + 1, Math.max(filteredCountries.length - 1, 0)),
+                                  );
+                                } else if (e.key === "ArrowUp") {
+                                  e.preventDefault();
+                                  setCountryOpen(true);
+                                  setCountryHighlight((i) => Math.max(i - 1, 0));
+                                } else if (e.key === "Enter" && countryOpen) {
+                                  e.preventDefault();
+                                  const picked = filteredCountries[countryHighlight];
+                                  if (picked) pickCountry(picked.code);
+                                } else if (e.key === "Escape") {
+                                  e.preventDefault();
+                                  setCountryOpen(false);
+                                }
                               }}
                               className={`${fieldClass} pr-10`}
                               aria-expanded={countryOpen}
                               aria-controls="country-list"
                               aria-autocomplete="list"
+                              aria-activedescendant={
+                                activeCountryOption ? `country-option-${activeCountryOption.code}` : undefined
+                              }
+                              aria-invalid={Boolean(errors.country)}
+                              aria-describedby={
+                                [errors.country ? "country-error" : "", "country-hint"]
+                                  .filter(Boolean)
+                                  .join(" ") || undefined
+                              }
                               role="combobox"
                             />
-                            <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate" />
+                            <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-ink" />
                           </div>
                           {countryOpen && (
                             <ul
@@ -418,18 +616,27 @@ export default function Contact() {
                               className="absolute left-0 right-0 mt-2 z-50 max-h-64 overflow-auto rounded-xl border border-white/10 bg-[#0B1220] p-2 shadow-2xl"
                             >
                               {filteredCountries.length === 0 ? (
-                                <li className="px-3 py-2 text-sm text-slate">No matching country.</li>
+                                <li className="px-3 py-2 text-sm text-ink">{t("contact.errors.noMatchingCountry")}</li>
                               ) : (
-                                filteredCountries.map((c) => (
-                                  <li key={c.code} role="option" aria-selected={c.code === country}>
+                                filteredCountries.map((c, i) => (
+                                  <li
+                                    key={c.code}
+                                    id={`country-option-${c.code}`}
+                                    role="option"
+                                    aria-selected={c.code === country || i === countryHighlight}
+                                  >
                                     <button
                                       type="button"
-                                      className="w-full text-left px-3 py-2 rounded-lg hover:bg-white/5 text-sm text-white"
+                                      tabIndex={-1}
+                                      className={`w-full text-left px-3 py-2 rounded-lg text-sm text-white ${
+                                        i === countryHighlight ? "bg-white/10" : "hover:bg-white/5"
+                                      }`}
                                       onMouseDown={(e) => e.preventDefault()}
+                                      onMouseEnter={() => setCountryHighlight(i)}
                                       onClick={() => pickCountry(c.code)}
                                     >
                                       {flagEmoji(c.code)} {c.name}
-                                      <span className="text-slate ml-2">{c.callingCode}</span>
+                                      <span className="text-ink ml-2">{c.callingCode}</span>
                                     </button>
                                   </li>
                                 ))
@@ -440,50 +647,69 @@ export default function Contact() {
 
                         <div>
                           <label className="block text-sm font-medium text-white mb-2" htmlFor="calling-code">
-                            Code
+                            {t("contact.code")}
                           </label>
                           <input
                             id="calling-code"
                             readOnly
                             value={callingCode || "+"}
-                            aria-label="Country calling code"
+                            aria-label={t("contact.callingCode")}
                             className={`${fieldClass} font-mono text-center px-2`}
                           />
                         </div>
 
                         <div>
                           <label className="block text-sm font-medium text-white mb-2" htmlFor="phone">
-                            Phone number
+                            {t("contact.phone")}{" "}
+                            <span aria-hidden="true" className="text-lime">
+                              *
+                            </span>
+                            <span className="sr-only">{t("contact.required")}</span>
                           </label>
                           <input
                             id="phone"
                             name="phone"
                             inputMode="tel"
                             autoComplete="tel-national"
-                            placeholder="Mobile / local number"
+                            required
+                            placeholder={t("contact.phonePlaceholder")}
                             value={phoneNational}
                             onChange={(e) =>
                               setPhoneNational(formatNational(e.target.value, country))
                             }
+                            aria-invalid={Boolean(errors.phone)}
+                            aria-describedby={errors.phone ? "phone-error" : undefined}
                             className={fieldClass}
                           />
                         </div>
                       </div>
-                      {detectedCountry && country === detectedCountry && (
-                        <p className="text-xs text-slate mt-2">
-                          Country suggested from your network location. You can change it.
+                      <p id="country-hint" className="text-xs text-ink mt-2">
+                        {detectedCountry && country === detectedCountry
+                          ? t("contact.countryDetectedHint")
+                          : t("contact.countrySelectHint")}
+                      </p>
+                      {errors.country && (
+                        <p id="country-error" className="text-red-300 text-sm mt-1">
+                          {errors.country}
                         </p>
                       )}
-                      {errors.country && <p className="text-red-300 text-sm mt-1">{errors.country}</p>}
-                      {errors.phone && <p className="text-red-300 text-sm mt-1">{errors.phone}</p>}
+                      {errors.phone && (
+                        <p id="phone-error" className="text-red-300 text-sm mt-1">
+                          {errors.phone}
+                        </p>
+                      )}
                     </div>
 
                     {inquiryType === "sales" && (
                       <fieldset>
                         <legend className="text-sm font-medium text-white mb-3">
-                          What do you use claim tag tickets for?
+                          {t("contact.useCaseLegend")}{" "}
+                          <span aria-hidden="true" className="text-lime">
+                            *
+                          </span>
+                          <span className="sr-only">{t("contact.required")}</span>
                         </legend>
-                        <div className="flex flex-wrap gap-2">
+                        <div id="use-case-group" className="flex flex-wrap gap-2" tabIndex={-1}>
                           {useCaseOptions.map((opt) => {
                             const on = useCases.includes(opt.key);
                             return (
@@ -515,7 +741,7 @@ export default function Contact() {
                                 className={`px-3 py-2 rounded-full text-sm border transition ${
                                   on
                                     ? "bg-lime text-obsidian border-lime"
-                                    : "border-white/10 text-slate hover:border-lime/40 hover:text-white"
+                                    : "border-white/10 text-ink hover:border-lime/40 hover:text-white"
                                 }`}
                               >
                                 {opt.label}
@@ -525,15 +751,26 @@ export default function Contact() {
                         </div>
                         {useCases.includes("other") && (
                           <input
+                            id="useCaseOther"
+                            name="useCaseOther"
+                            required
                             className={`${fieldClass} mt-3`}
-                            placeholder="Please specify"
+                            placeholder={t("contact.useCaseOtherPlaceholder")}
                             value={useCaseOther}
                             onChange={(e) => setUseCaseOther(e.target.value)}
+                            aria-invalid={Boolean(errors.useCaseOther)}
+                            aria-describedby={errors.useCaseOther ? "useCaseOther-error" : undefined}
                           />
                         )}
-                        {errors.useCase && <p className="text-red-300 text-sm mt-2">{errors.useCase}</p>}
+                        {errors.useCase && (
+                          <p id="useCase-error" className="text-red-300 text-sm mt-2">
+                            {errors.useCase}
+                          </p>
+                        )}
                         {errors.useCaseOther && (
-                          <p className="text-red-300 text-sm mt-2">{errors.useCaseOther}</p>
+                          <p id="useCaseOther-error" className="text-red-300 text-sm mt-2">
+                            {errors.useCaseOther}
+                          </p>
                         )}
                       </fieldset>
                     )}
@@ -541,18 +778,27 @@ export default function Contact() {
                     {messageCopy && (
                       <div>
                         <label className="block text-sm font-medium text-white mb-2" htmlFor="message">
-                          {messageCopy.label}
+                          {messageCopy.label}{" "}
+                          <span aria-hidden="true" className="text-lime">
+                            *
+                          </span>
+                          <span className="sr-only">required</span>
                         </label>
                         <textarea
                           id="message"
                           name="message"
                           rows={6}
                           maxLength={8000}
+                          required
                           className={fieldClass}
                           placeholder={messageCopy.placeholder}
+                          aria-invalid={Boolean(errors.message)}
+                          aria-describedby={errors.message ? "message-error" : undefined}
                         />
                         {errors.message && (
-                          <p className="text-red-300 text-sm mt-1">{errors.message}</p>
+                          <p id="message-error" className="text-red-300 text-sm mt-1">
+                            {errors.message}
+                          </p>
                         )}
                       </div>
                     )}
@@ -561,11 +807,10 @@ export default function Contact() {
                       <div className="border-t border-white/10 pt-6 space-y-8">
                         <div>
                           <p className="text-white font-semibold">
-                            Help us understand your requirements
+                            {t("contact.salesHelpTitle")}
                           </p>
-                          <p className="text-sm text-slate mt-1">
-                            Optional — these questions help us send a more relevant response. You can
-                            skip any of them.
+                          <p className="text-sm text-ink mt-1">
+                            {t("contact.salesHelpSubtitle")}
                           </p>
                         </div>
 
@@ -594,7 +839,7 @@ export default function Contact() {
                                       className={`px-3 py-2 rounded-full text-sm border ${
                                         on
                                           ? "bg-white text-obsidian border-white"
-                                          : "border-white/10 text-slate hover:text-white"
+                                          : "border-white/10 text-ink hover:text-white"
                                       }`}
                                     >
                                       {opt.label}
@@ -605,7 +850,7 @@ export default function Contact() {
                               {q.key === "current_solution" && showCurrentFollowUp && (
                                 <input
                                   className={`${fieldClass} mt-4`}
-                                  placeholder="Which solution do you currently use?"
+                                  placeholder={t("contact.competitorPlaceholder")}
                                   value={answers.current_solution?.freeText ?? ""}
                                   onChange={(e) =>
                                     setAnswer("current_solution", { freeText: e.target.value })
@@ -639,7 +884,7 @@ export default function Contact() {
                                       className={`px-3 py-2 rounded-full text-sm border ${
                                         on
                                           ? "bg-white text-obsidian border-white"
-                                          : "border-white/10 text-slate hover:text-white"
+                                          : "border-white/10 text-ink hover:text-white"
                                       }`}
                                     >
                                       {opt.label}
@@ -653,44 +898,79 @@ export default function Contact() {
                       </div>
                     )}
 
-                    <label className="flex items-start gap-3 text-sm text-slate">
+                    <label className="flex items-start gap-3 text-sm text-ink">
                       <input
+                        id="consent"
+                        name="consent"
                         type="checkbox"
+                        required
                         className="mt-1 accent-[#C6F24E]"
                         checked={consent}
                         onChange={(e) => setConsent(e.target.checked)}
+                        aria-invalid={Boolean(errors.consent)}
+                        aria-describedby={
+                          [errors.consent ? "consent-error" : "", "consent-privacy"]
+                            .filter(Boolean)
+                            .join(" ") || undefined
+                        }
                       />
                       <span>
-                        I agree to the{" "}
+                        {t("contact.consentPrefix")}{" "}
                         <Link href="/terms" className="text-lime underline underline-offset-2">
-                          Terms &amp; Conditions
+                          {t("contact.terms")}
                         </Link>{" "}
-                        and acknowledge the{" "}
+                        {t("contact.consentMiddle")}{" "}
                         <Link href="/privacy" className="text-lime underline underline-offset-2">
-                          Privacy Policy
+                          {t("contact.privacy")}
                         </Link>
-                        .
+                        .{" "}
+                        <span aria-hidden="true" className="text-lime">
+                          *
+                        </span>
                       </span>
                     </label>
-                    {errors.consent && <p className="text-red-300 text-sm">{errors.consent}</p>}
+                    <p id="consent-privacy" className="text-xs text-ink">
+                      {t("contact.consentNote")}
+                    </p>
+                    {botSiteKey ? (
+                      <TurnstileField siteKey={botSiteKey} action={botAction} onToken={setBotProof} />
+                    ) : null}
+                    {errors.consent && (
+                      <p id="consent-error" className="text-red-300 text-sm">
+                        {errors.consent}
+                      </p>
+                    )}
 
                     <div className="hidden" aria-hidden="true">
                       <input name="companyWebsite" tabIndex={-1} autoComplete="off" />
                     </div>
 
-                    {submitError && (
-                      <p role="alert" className="text-red-300 text-sm">
-                        {submitError}
-                      </p>
-                    )}
+
+                    <p className="text-sm text-ink">{t("contact.responseTime")}</p>
+                    <p className="text-sm text-ink">
+                      {t("contact.orEmail")}{" "}
+                      <a
+                        href="mailto:info@claimtagx.com"
+                        className="text-lime underline underline-offset-2"
+                      >
+                        {t("contact.sendEmail")}
+                      </a>
+                    </p>
+
+                    <div aria-live="polite" className="sr-only">
+                      {submitting ? t("common.submitting") : ""}
+                    </div>
 
                     <button
                       type="submit"
-                      disabled={submitting}
+                      disabled={submitting || offline}
+                      data-testid="contact-submit"
                       className="w-full sm:w-auto bg-lime text-obsidian px-8 py-3.5 rounded-xl font-bold disabled:opacity-60 inline-flex items-center justify-center gap-2"
                     >
-                      {submitting && <Loader2 className="w-4 h-4 animate-spin" />}
-                      {submitting ? "Submitting…" : "Submit"}
+                      {submitting && (
+                        <Loader2 className={`w-4 h-4 ${reduceMotion ? "" : "animate-spin"}`} />
+                      )}
+                      {submitting ? t("common.submitting") : t("common.submit")}
                     </button>
                   </>
                 )}
@@ -718,10 +998,20 @@ function Field({
   type?: string;
   autoComplete?: string;
 }) {
+  const errorId = `${name}-error`;
   return (
     <div>
       <label className="block text-sm font-medium text-white mb-2" htmlFor={name}>
         {label}
+        {required && (
+          <>
+            {" "}
+            <span aria-hidden="true" className="text-lime">
+              *
+            </span>
+            <span className="sr-only">required</span>
+          </>
+        )}
       </label>
       <input
         id={name}
@@ -730,10 +1020,11 @@ function Field({
         required={required}
         autoComplete={autoComplete}
         aria-invalid={Boolean(error)}
+        aria-describedby={error ? errorId : undefined}
         className={fieldClass}
       />
       {error && (
-        <p className="text-red-300 text-sm mt-1" role="alert">
+        <p id={errorId} className="text-red-300 text-sm mt-1">
           {error}
         </p>
       )}
@@ -746,36 +1037,57 @@ function Confirmation({
 }: {
   result: { firstName: string; reference: string; qualified: boolean; meetingUrl: string | null };
 }) {
+  const { t } = useI18n();
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  const summary = result.qualified
+    ? t("contact.qualifiedBody")
+    : t("contact.standardBody");
+  useEffect(() => {
+    headingRef.current?.focus();
+  }, []);
   return (
-    <div className="rounded-[2rem] border border-white/10 bg-steel/30 p-8 md:p-12">
-      <div className="w-12 h-12 rounded-full bg-lime text-obsidian grid place-items-center mb-6">
+    <div
+      className="rounded-[2rem] border border-white/10 bg-steel/30 p-8 md:p-12"
+      data-testid="contact-confirmation"
+      role="alert"
+      aria-live="assertive"
+      aria-atomic="true"
+    >
+      <div className="w-12 h-12 rounded-full bg-lime text-obsidian grid place-items-center mb-6" aria-hidden="true">
         <Check className="w-6 h-6" />
       </div>
-      <h2 className="text-3xl font-bold text-white mb-4">Thank you, {result.firstName}.</h2>
+      <h2
+        ref={headingRef}
+        tabIndex={-1}
+        className="text-3xl font-bold text-white mb-4 outline-none"
+      >
+        {t("contact.thankYou", { name: result.firstName })}
+      </h2>
       {result.qualified ? (
         <>
-          <p className="text-slate leading-relaxed mb-8">
-            We've received your inquiry and would be happy to discuss your requirements.
-          </p>
-          {result.meetingUrl && (
+          <p className="text-ink leading-relaxed mb-8">{t("contact.qualifiedBody")}</p>
+          {isSafePublicBookingUrl(result.meetingUrl) ? (
             <a
               href={result.meetingUrl}
               target="_blank"
               rel="noopener noreferrer"
-              onClick={() => track("scheduling_cta_clicked", {})}
+              onClick={() => track("scheduling_cta_clicked", { provider: "calendly" })}
               className="inline-flex bg-lime text-obsidian px-6 py-3 rounded-xl font-bold"
+              data-testid="contact-meeting-cta"
             >
-              Schedule a Meeting
+              {t("contact.scheduleMeeting")}
             </a>
+          ) : (
+            <p className="text-ink leading-relaxed mb-8" data-testid="contact-meeting-unavailable">
+              {t("contact.meetingUnavailable")}
+            </p>
           )}
         </>
       ) : (
-        <p className="text-slate leading-relaxed mb-8">
-          We've received your inquiry. A member of our team will review your message and respond as
-          soon as possible.
-        </p>
+        <p className="text-ink leading-relaxed mb-8">{t("contact.standardBody")}</p>
       )}
-      <p className="text-sm text-slate mt-8 font-mono">Reference: {result.reference}</p>
+      <p className="text-sm text-ink mt-8 font-mono">{t("contact.reference", { reference: result.reference })}</p>
+      <span className="sr-only">{summary}</span>
     </div>
   );
 }

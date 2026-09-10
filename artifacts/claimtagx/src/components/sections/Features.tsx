@@ -1,53 +1,21 @@
 import { motion } from 'framer-motion';
-import { ShieldCheck, Database, Smartphone, LayoutDashboard, Globe, Camera, WifiOff, FileText, Zap } from 'lucide-react';
+import { ShieldCheck, Database, Smartphone, LayoutDashboard, Globe, Camera, WifiOff, FileText, Zap, type LucideIcon } from 'lucide-react';
 import featureHero from '@/assets/feature-hero.png';
+import { useI18n } from '@/lib/i18n';
 
-const features = [
-  {
-    icon: <ShieldCheck className="w-6 h-6 text-lime" />,
-    title: "Tamper-proof by math",
-    description: "A stale screenshot, a forged stub, a tampered record — all fail verification. Every ticket carries an Ed25519 cryptographic signature; mismatch blocks the release.",
-  },
-  {
-    icon: <Database className="w-6 h-6 text-lime" />,
-    title: "Your data, your instance",
-    description: "Strict tenant isolation at the database layer — one operator never sees another operator's records. Backed by row-level security on PostgreSQL.",
-  },
-  {
-    icon: <Smartphone className="w-6 h-6 text-lime" />,
-    title: "Handler Mobile App",
-    description: "Native iOS/Android app for handlers. Includes OCR, offline mode, and auto-sync."
-  },
-  {
-    icon: <LayoutDashboard className="w-6 h-6 text-lime" />,
-    title: "Handler Visibility",
-    description: "Who did what, when — and how many assets they handled. Accountability that protects your team in disputes, not surveillance. Live dashboard with active tickets and wait times."
-  },
-  {
-    icon: <Globe className="w-6 h-6 text-lime" />,
-    title: "No Patron App Needed",
-    description: "Patrons claim items via a web link. No download. Works on any smartphone or email client."
-  },
-  {
-    icon: <Camera className="w-6 h-6 text-lime" />,
-    title: "Photo + Plate Capture",
-    description: "ML Kit-powered OCR reads plates in under a second. Photos attached to every ticket."
-  },
-  {
-    icon: <WifiOff className="w-6 h-6 text-lime" />,
-    title: "Offline-First Ticketing",
-    description: "Issue a tag to any patron, guest, or customer even when they have no signal. Tickets sync the moment connectivity returns."
-  },
-  {
-    icon: <FileText className="w-6 h-6 text-lime" />,
-    title: "Full Audit Trail",
-    description: "Every action is timestamped and logged. Fully exportable. Ready for insurance review."
-  },
-  {
-    icon: <Zap className="w-6 h-6 text-lime" />,
-    title: "60-Second Setup",
-    description: "No hardware. No installation. Sign up, add handlers, start issuing tickets. That's it."
-  }
+const featureKeys: Array<{
+  key: 'tamper' | 'isolation' | 'mobile' | 'visibility' | 'noApp' | 'photo' | 'offline' | 'audit' | 'setup';
+  icon: LucideIcon;
+}> = [
+  { key: 'tamper', icon: ShieldCheck },
+  { key: 'isolation', icon: Database },
+  { key: 'mobile', icon: Smartphone },
+  { key: 'visibility', icon: LayoutDashboard },
+  { key: 'noApp', icon: Globe },
+  { key: 'photo', icon: Camera },
+  { key: 'offline', icon: WifiOff },
+  { key: 'audit', icon: FileText },
+  { key: 'setup', icon: Zap },
 ];
 
 const containerVariants = {
@@ -64,9 +32,11 @@ const itemVariants = {
 };
 
 export default function Features() {
+  const { t } = useI18n();
+
   return (
     <section id="features" className="py-24 md:py-32 bg-obsidian border-t border-white/5 relative overflow-hidden">
-      <div className="absolute top-0 right-0 w-[800px] h-[800px] bg-[radial-gradient(circle_at_top_right,_rgba(198,242,78,0.05),_transparent_70%)] pointer-events-none" />
+      <div className="absolute top-0 end-0 w-[800px] h-[800px] bg-[radial-gradient(circle_at_top_right,_rgba(198,242,78,0.05),_transparent_70%)] pointer-events-none" />
       
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
         
@@ -79,18 +49,16 @@ export default function Features() {
         >
           <motion.div variants={itemVariants} className="mb-6">
             <span className="font-mono text-xs font-bold text-lime tracking-[0.2em] uppercase bg-lime/10 px-3 py-1 rounded-sm">
-              The Custody Operating System
+              {t('home.features.eyebrow')}
             </span>
           </motion.div>
 
           <motion.h2 variants={itemVariants} className="text-3xl md:text-5xl font-bold text-white mb-6">
-            Built for operators who <br className="hidden sm:block" /> can't afford mistakes.
+            {t('home.features.title')}
           </motion.h2>
 
-          <motion.p variants={itemVariants} className="text-lg text-slate max-w-2xl">
-            More than digital tickets — an operating system for everything in your custody.
-            Guest experience, transformed. Visibility into who did what, when, and how many
-            assets they handled. Control over every station, shift, and handoff.
+          <motion.p variants={itemVariants} className="text-lg text-ink max-w-2xl">
+            {t('home.features.subtitle')}
           </motion.p>
         </motion.div>
 
@@ -104,7 +72,7 @@ export default function Features() {
         >
           <img
             src={featureHero}
-            alt="ClaimTagX Dashboard Visualization"
+            alt={t('home.features.heroAlt')}
             loading="lazy"
             decoding="async"
             className="w-full h-auto object-cover transform group-hover:scale-105 transition-transform duration-1000"
@@ -119,22 +87,22 @@ export default function Features() {
           variants={containerVariants}
           className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
         >
-          {features.map((feature, index) => (
+          {featureKeys.map(({ key, icon: Icon }) => (
             <motion.div 
-              key={index}
+              key={key}
               variants={itemVariants}
               whileHover={{ y: -5 }}
-              className="bg-steel/40 backdrop-blur-sm border border-white/5 rounded-2xl p-8 hover:border-lime/30 hover:bg-steel transition-all duration-300 group shadow-lg overflow-hidden relative"
+              className="bg-steel border border-white/10 rounded-2xl p-8 hover:border-lime hover:bg-steel group shadow-lg overflow-hidden relative"
             >
-              <div className="absolute top-0 right-0 w-32 h-32 bg-lime/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 group-hover:bg-lime/10 transition-colors duration-500" />
+              <div className="absolute top-0 end-0 w-32 h-32 bg-lime/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 rtl:-translate-x-1/2 group-hover:bg-lime/10 transition-colors duration-500" />
               
               <div className="relative z-10">
                 <div className="w-14 h-14 bg-obsidian rounded-2xl flex items-center justify-center mb-6 border border-white/10 group-hover:border-lime/30 group-hover:scale-110 transition-all duration-300 shadow-inner">
-                  {feature.icon}
+                  <Icon className="w-6 h-6 text-lime" />
                 </div>
-                <h3 className="text-xl font-bold text-white mb-3">{feature.title}</h3>
-                <p className="text-slate leading-relaxed">
-                  {feature.description}
+                <h3 className="text-xl font-bold text-white mb-3">{t(`home.features.items.${key}.title`)}</h3>
+                <p className="text-ink leading-relaxed">
+                  {t(`home.features.items.${key}.description`)}
                 </p>
               </div>
             </motion.div>

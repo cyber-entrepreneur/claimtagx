@@ -50,6 +50,11 @@ function consentGranted(): boolean {
   return window.localStorage.getItem(CONSENT_KEY) === 'accepted';
 }
 
+/** Optional marketing analytics (cookie banner). Independent of required terms consent. */
+export function isOptionalAnalyticsConsentGranted(): boolean {
+  return consentGranted();
+}
+
 function uuid(): string {
   if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
     return crypto.randomUUID();

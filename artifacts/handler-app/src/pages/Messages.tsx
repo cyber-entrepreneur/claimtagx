@@ -133,8 +133,8 @@ export default function MessagesPage() {
             const prev = messages[i - 1];
             const showDay =
               !prev || dayLabel(prev.createdAt) !== dayLabel(m.createdAt);
-            // Self-detection: the server identifies the author by Clerk id but
-            // that's not exposed client-side. Match by display name as a
+            // Self-detection: the server identifies the author by account id
+            // but that's not exposed client-side. Match by display name as a
             // close-enough heuristic for visual alignment.
             const mine = m.authorName === (session?.handlerName ?? "");
             return (

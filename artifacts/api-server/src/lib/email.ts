@@ -1,32 +1,19 @@
-import { Resend } from "resend";
+import { createHash } from "node:crypto";
 import { logger } from "./logger";
+import {
+  createMicrosoftGraphEmailProvider,
+  getEmailProvider,
+  type ThreadingEmailHeaders,
+} from "./crm/emailProvider";
 
 // ---------------------------------------------------------------------------
-// Transactional email service.
+// Transactional email service (Microsoft Graph / Exchange Online).
 //
-// Sends invitation / revocation notifications via Resend when a
-// `RESEND_API_KEY` is configured. When the key is missing (e.g. during local
-// dev or in test environments) we fall back to logging the rendered email so
-// the surrounding flow still works and the message is visible.
+// Sends via Microsoft Graph sendMail when MS_GRAPH_* configuration is present.
+// Local verification uses CRM_GRAPH_SIMULATOR / CRM_EMAIL_SIMULATOR / CRM_ALLOW_TEST_JOBS.
+// Production without Graph configuration hard-fails so CRM jobs can retry.
 // ---------------------------------------------------------------------------
 
-const FROM_FALLBACK = "ClaimTagX <onboarding@resend.dev>";
-
-let cachedClient: Resend | null = null;
-function getClient(): Resend | null {
-  const key = process.env.RESEND_API_KEY;
-  if (!key) return null;
-  if (!cachedClient) cachedClient = new Resend(key);
-  return cachedClient;
-}
-
-function getFromAddress(): string {
-  return process.env.EMAIL_FROM?.trim() || FROM_FALLBACK;
-}
-
-// Best-effort base URL for the handler app, where invited users complete
-// accept / decline. Prefers an explicit override, then the deployed domain,
-// then the dev domain.
 function getHandlerAppBaseUrl(): string {
   const explicit = process.env.HANDLER_APP_URL?.trim();
   if (explicit) return explicit.replace(/\/+$/, "") + "/";
@@ -51,42 +38,67 @@ interface SendArgs {
   subject: string;
   html: string;
   text: string;
+  headers?: ThreadingEmailHeaders;
 }
 
-export async function sendTransactionalEmail(args: SendArgs): Promise<void> {
-  await send(args);
+/** Sends mail and returns the provider message id, or null when skipped in non-production. */
+export async function sendTransactionalEmail(
+  args: SendArgs,
+  opts?: { idempotencyKey?: string },
+): Promise<string | null> {
+  return send(args, opts);
 }
 
-async function send(args: SendArgs): Promise<void> {
-  const client = getClient();
-  if (!client) {
-    // Dev fallback only: log metadata, never the rendered body, so a
-    // misconfigured non-dev environment doesn't leak invite contents into
-    // application logs.
-    logger.warn(
-      {
-        recipientDomain: args.to.split("@")[1] ?? "",
-        subject: args.subject,
-      },
-      "RESEND_API_KEY not set; skipping outbound email",
-    );
-    return;
-  }
+export const testEmailLedger = new Map<string, { sends: number; providerMessageId: string }>();
+
+async function send(args: SendArgs, opts?: { idempotencyKey?: string }): Promise<string | null> {
+  const provider = getEmailProvider();
   try {
-    const { error } = await client.emails.send({
-      from: getFromAddress(),
+    const { providerMessageId } = await provider.send({
       to: args.to,
       subject: args.subject,
       html: args.html,
       text: args.text,
+      headers: args.headers,
+      idempotencyKey: opts?.idempotencyKey,
     });
-    if (error) {
-      logger.error({ err: error, to: args.to }, "Resend rejected email");
-    } else {
-      logger.info({ to: args.to, subject: args.subject }, "invitation email sent");
+    if (process.env.CRM_ALLOW_TEST_JOBS === "true" && opts?.idempotencyKey && providerMessageId) {
+      const key = opts.idempotencyKey;
+      const existing = testEmailLedger.get(key);
+      if (existing) {
+        existing.sends += 1;
+      } else {
+        testEmailLedger.set(key, { sends: 1, providerMessageId });
+      }
     }
+    if (providerMessageId) {
+      logger.info(
+        {
+          recipientDomain: args.to.split("@")[1],
+          subject: args.subject,
+          providerId: providerMessageId,
+        },
+        "transactional email accepted by Microsoft Graph",
+      );
+    }
+    return providerMessageId;
   } catch (err) {
-    logger.error({ err, to: args.to }, "failed to send invitation email");
+    if (
+      process.env.NODE_ENV !== "production" &&
+      !process.env.MS_GRAPH_TENANT_ID &&
+      process.env.CRM_ALLOW_TEST_JOBS === "true"
+    ) {
+      const key = opts?.idempotencyKey ?? `no-key:${args.to}:${args.subject}`;
+      const existing = testEmailLedger.get(key);
+      if (existing) {
+        existing.sends += 1;
+        return existing.providerMessageId;
+      }
+      const providerMessageId = `test_${createHash("sha256").update(key).digest("hex").slice(0, 16)}`;
+      testEmailLedger.set(key, { sends: 1, providerMessageId });
+      return providerMessageId;
+    }
+    throw err;
   }
 }
 
@@ -96,18 +108,13 @@ export interface InvitationEmailParams {
   inviterName: string;
   inviterEmail: string;
   role: string;
-  /** True when this is a re-send of an existing pending invitation. */
   resend?: boolean;
 }
 
-export async function sendInvitationEmail(
-  params: InvitationEmailParams,
-): Promise<void> {
+export async function sendInvitationEmail(params: InvitationEmailParams): Promise<void> {
   const link = getHandlerAppBaseUrl();
   const safeVenue = escapeHtml(params.venueName);
-  const safeInviter = escapeHtml(
-    params.inviterName || params.inviterEmail || "A venue owner",
-  );
+  const safeInviter = escapeHtml(params.inviterName || params.inviterEmail || "A venue owner");
   const safeRole = escapeHtml(params.role || "handler");
   const safeLink = escapeHtml(link);
   const greeting = params.resend
@@ -159,9 +166,7 @@ export interface TamperSpikeEmailParams {
   link: string;
 }
 
-export async function sendTamperSpikeEmail(
-  params: TamperSpikeEmailParams,
-): Promise<void> {
+export async function sendTamperSpikeEmail(params: TamperSpikeEmailParams): Promise<void> {
   const safeVenue = escapeHtml(params.venueName);
   const safeCode = escapeHtml(params.venueCode);
   const safeTicket = escapeHtml(params.ticketId);
@@ -209,13 +214,9 @@ export interface RevocationEmailParams {
   inviterEmail: string;
 }
 
-export async function sendInvitationRevokedEmail(
-  params: RevocationEmailParams,
-): Promise<void> {
+export async function sendInvitationRevokedEmail(params: RevocationEmailParams): Promise<void> {
   const safeVenue = escapeHtml(params.venueName);
-  const safeInviter = escapeHtml(
-    params.inviterName || params.inviterEmail || "The venue owner",
-  );
+  const safeInviter = escapeHtml(params.inviterName || params.inviterEmail || "The venue owner");
   const subject = `Your invitation to ${params.venueName} was withdrawn`;
   const html = `
     <div style="font-family:-apple-system,Segoe UI,sans-serif;max-width:520px;margin:0 auto;padding:24px;color:#0b1220">
@@ -238,3 +239,5 @@ export async function sendInvitationRevokedEmail(
   ].join("\n");
   await send({ to: params.to, subject, html, text });
 }
+
+export { createMicrosoftGraphEmailProvider };

@@ -10,19 +10,29 @@ import {
   crmMessagesTable,
   crmConversationsTable,
   crmContactsTable,
+  crmEmailQuarantineTable,
+  crmWebhookReceiptsTable,
 } from "@workspace/db";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, or } from "drizzle-orm";
 import { logger } from "../lib/logger";
 import { ensureCrmSeeded, publicTaxonomyFallback } from "../lib/crm/seed";
 import { rateLimitOk, submitInquiry } from "../lib/crm/orchestrator";
+import { publicBotProtectionConfig } from "../lib/crm/botAdapter";
 import { writeAudit } from "../lib/crm/audit";
 import { enqueueJob } from "../lib/crm/jobs";
+import {
+  graphNotificationAuthorized,
+  loadMicrosoftGraphConfig,
+  parseGraphNotifications,
+  respondGraphValidationToken,
+} from "../lib/crm/microsoftGraph";
+import { processGraphChangeNotifications } from "../lib/crm/microsoftGraph/inbound";
+import { inboundWebhookAuthorized } from "../lib/crm/webhookSecurity";
+import { processInboundEmail } from "../lib/crm/inboundEmail";
 
 const router: IRouter = Router();
 
 function extractIp(req: Request): string | undefined {
-  const fwd = req.headers["x-forwarded-for"];
-  if (typeof fwd === "string" && fwd.length > 0) return fwd.split(",")[0]?.trim();
   return req.ip;
 }
 
@@ -60,6 +70,7 @@ const SubmitBody = z
     attribution: z.record(z.unknown()).optional(),
     idempotencyKey: z.string().uuid(),
     honeypot: z.string().max(200).optional(),
+    botProof: z.string().min(1).max(2048).optional(),
   })
   .superRefine((data, ctx) => {
     if (data.inquiryType === "sales" && data.useCaseKeys.length === 0) {
@@ -109,6 +120,15 @@ router.get("/contact/bootstrap", async (req, res) => {
     logger.warn({ err }, "contact bootstrap falling back to built-in taxonomy");
   }
 
+  const ip = extractIp(req) ?? "unknown";
+  try {
+    if (await rateLimitOk(`form_view:${ip}`, 1, 10 * 60_000)) {
+      await enqueueJob("analytics", { event: "form_view", properties: { source: "bootstrap" } });
+    }
+  } catch (err) {
+    logger.warn({ err }, "form_view analytics skipped");
+  }
+
   res.json({
     countries,
     detectedCountry: detected,
@@ -117,6 +137,7 @@ router.get("/contact/bootstrap", async (req, res) => {
     privacyPolicyVersion,
     messageMaxLength: 8000,
     taxonomy,
+    botProtection: publicBotProtectionConfig(),
   });
 });
 
@@ -127,7 +148,9 @@ router.post("/contact/inquiries", async (req, res, next) => {
     crypto.randomUUID();
   try {
     const ip = extractIp(req) ?? "unknown";
-    if (!rateLimitOk(`submit:${ip}`, 8, 10 * 60_000)) {
+    const submitMax = Number(process.env.CRM_PUBLIC_SUBMIT_RATE_MAX ?? "8");
+    const submitWindowMs = Number(process.env.CRM_PUBLIC_SUBMIT_RATE_WINDOW_MS ?? String(10 * 60_000));
+    if (!(await rateLimitOk(`submit:${ip}`, Number.isFinite(submitMax) ? submitMax : 8, Number.isFinite(submitWindowMs) ? submitWindowMs : 10 * 60_000))) {
       res.status(429).json({
         error: "Too many inquiries from this network. Please wait a few minutes and try again.",
         correlationId,
@@ -138,6 +161,22 @@ router.post("/contact/inquiries", async (req, res, next) => {
     if (!parsed.success) {
       res.status(400).json({
         error: parsed.error.issues[0]?.message ?? "Please check the form and try again.",
+        correlationId,
+      });
+      return;
+    }
+    const emailKey = parsed.data.email.trim().toLowerCase();
+    const emailMax = Number(process.env.CRM_PUBLIC_EMAIL_SUBMIT_RATE_MAX ?? "5");
+    const emailWindowMs = Number(process.env.CRM_PUBLIC_EMAIL_SUBMIT_RATE_WINDOW_MS ?? String(60 * 60_000));
+    if (
+      !(await rateLimitOk(
+        `submit:email:${emailKey}`,
+        Number.isFinite(emailMax) ? emailMax : 5,
+        Number.isFinite(emailWindowMs) ? emailWindowMs : 60 * 60_000,
+      ))
+    ) {
+      res.status(429).json({
+        error: "Too many inquiries from this email. Please wait before submitting again.",
         correlationId,
       });
       return;
@@ -163,19 +202,33 @@ router.post("/contact/inquiries", async (req, res, next) => {
       {
         ip,
         userAgent: typeof req.headers["user-agent"] === "string" ? req.headers["user-agent"] : undefined,
+        hostname: typeof req.hostname === "string" ? req.hostname : undefined,
         correlationId,
       },
     );
+    if (result.timing) {
+      logger.info(
+        {
+          correlationId,
+          submitTimingMs: result.timing.totalMs,
+          submitStages: result.timing.stages,
+          pool: result.timing.pool,
+        },
+        "contact submit stage timing",
+      );
+      res.setHeader("x-submit-timing-ms", String(result.timing.totalMs));
+    }
     res.status(201).json({
       reference: result.reference,
       qualified: result.qualified,
       meetingUrl: result.meetingUrl,
       firstName: result.firstName,
       correlationId,
+      ...(result.timing ? { timing: result.timing } : {}),
     });
   } catch (err) {
     const status = (err as { status?: number }).status;
-    if (status && status < 500) {
+    if (status === 503 || (status && status < 500)) {
       res.status(status).json({
         error: err instanceof Error ? err.message : "We couldn't submit your inquiry.",
         correlationId,
@@ -190,17 +243,50 @@ router.post("/contact/inquiries", async (req, res, next) => {
   }
 });
 
-router.post("/contact/webhooks/inbound-email", async (req, res, next) => {
+router.post("/contact/webhooks/microsoft-graph/mail", async (req, res, next) => {
   try {
-    const secret = process.env.CONTACT_INBOUND_WEBHOOK_SECRET?.trim();
-    if (secret) {
-      const provided = req.headers["x-webhook-secret"];
-      if (provided !== secret) {
-        res.status(401).json({ error: "Unauthorized" });
+    const validationToken = typeof req.query.validationToken === "string" ? req.query.validationToken : undefined;
+    if (validationToken) {
+      const response = respondGraphValidationToken(validationToken);
+      res.status(response.status).type(response.contentType).send(response.body);
+      return;
+    }
+    const config = loadMicrosoftGraphConfig();
+    if (!config) {
+      if (process.env.NODE_ENV === "production") {
+        res.status(503).json({ error: "Microsoft Graph inbound is not configured" });
         return;
       }
-    } else if (process.env.NODE_ENV === "production") {
-      res.status(503).json({ error: "Inbound email is not configured" });
+      res.status(202).json({ skipped: true, reason: "graph_not_configured" });
+      return;
+    }
+    const notifications = parseGraphNotifications(req.body ?? {});
+    const authz = graphNotificationAuthorized(config, notifications);
+    if (!authz.ok) {
+      res.status(401).json({ error: "Unauthorized", reason: authz.reason });
+      return;
+    }
+    await processGraphChangeNotifications(config, notifications);
+    res.status(202).json({ accepted: notifications.length });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/** Local/test fixture webhook for direct payload injection (non-production). */
+router.post("/contact/webhooks/inbound-email", async (req, res, next) => {
+  try {
+    if (process.env.NODE_ENV === "production") {
+      res.status(410).json({ error: "Use /contact/webhooks/microsoft-graph/mail in production" });
+      return;
+    }
+    const authz = inboundWebhookAuthorized({
+      nodeEnv: process.env.NODE_ENV,
+      secret: process.env.CONTACT_INBOUND_WEBHOOK_SECRET,
+      provided: req.headers["x-webhook-secret"],
+    });
+    if (!authz.ok) {
+      res.status(authz.status ?? 401).json({ error: "Unauthorized" });
       return;
     }
     const body = z
@@ -208,77 +294,38 @@ router.post("/contact/webhooks/inbound-email", async (req, res, next) => {
         from: z.string().email(),
         subject: z.string().max(500).optional(),
         text: z.string().min(1).max(20000),
+        html: z.string().max(40000).optional(),
         messageId: z.string().max(200).optional(),
         inReplyTo: z.string().max(200).optional(),
+        references: z.string().max(2000).optional(),
+        providerEventId: z.string().max(200).optional(),
+        eventId: z.string().max(200).optional(),
       })
       .safeParse(req.body ?? {});
     if (!body.success) {
       res.status(400).json({ error: "Invalid payload" });
       return;
     }
-    const ref = body.data.subject?.match(/CTX-\d{4}-\d{6}/i)?.[0]?.toUpperCase();
-    if (!ref) {
-      res.status(202).json({ matched: false });
-      return;
-    }
-    const [inquiry] = await db
-      .select()
-      .from(crmInquiriesTable)
-      .where(eq(crmInquiriesTable.reference, ref))
-      .limit(1);
-    if (!inquiry) {
-      res.status(202).json({ matched: false });
-      return;
-    }
-    const [conversation] = await db
-      .select()
-      .from(crmConversationsTable)
-      .where(eq(crmConversationsTable.inquiryId, inquiry.id))
-      .limit(1);
-    if (!conversation) {
-      res.status(202).json({ matched: false });
-      return;
-    }
-    await db.insert(crmMessagesTable).values({
-      conversationId: conversation.id,
-      inquiryId: inquiry.id,
-      kind: "customer_email_reply",
-      visibility: "customer",
-      channel: "email",
-      authorType: "contact",
-      authorContactId: inquiry.contactId,
-      subject: body.data.subject ?? null,
-      body: body.data.text,
-      externalMessageId: body.data.messageId ?? null,
-      inReplyTo: body.data.inReplyTo ?? null,
+    const providerEventId =
+      body.data.providerEventId ??
+      body.data.eventId ??
+      `fixture-${Date.now()}`;
+    const rawBody = req.rawBody ?? JSON.stringify(req.body ?? {});
+    const result = await processInboundEmail({
+      providerEventId: providerEventId ?? `local-${Date.now()}`,
+      rawBody,
+      payload: {
+        from: body.data.from,
+        subject: body.data.subject,
+        text: body.data.text,
+        html: body.data.html,
+        messageId: body.data.messageId,
+        inReplyTo: body.data.inReplyTo,
+        references: body.data.references,
+      },
+      headers: req.headers as Record<string, string | string[] | undefined>,
     });
-    await db
-      .update(crmInquiriesTable)
-      .set({
-        lastActivityAt: new Date(),
-        lastCustomerMessageAt: new Date(),
-        status: inquiry.status === "WAITING_FOR_CUSTOMER" ? "IN_PROGRESS" : inquiry.status,
-        updatedAt: new Date(),
-      })
-      .where(eq(crmInquiriesTable.id, inquiry.id));
-    await writeAudit({
-      actorType: "contact",
-      actorId: inquiry.contactId,
-      action: "message.received",
-      entityType: "inquiry",
-      entityId: inquiry.id,
-      inquiryId: inquiry.id,
-    });
-    if (inquiry.assignedStaffId) {
-      await enqueueJob("notify_staff", {
-        staffId: inquiry.assignedStaffId,
-        inquiryId: inquiry.id,
-        type: "customer_reply",
-        title: "Customer replied",
-        body: inquiry.reference,
-      });
-    }
-    res.json({ matched: true, reference: inquiry.reference });
+    res.status(result.duplicate || result.quarantined ? 202 : 200).json(result);
   } catch (err) {
     next(err);
   }
@@ -357,6 +404,62 @@ router.post("/contact/webhooks/scheduling", async (req, res, next) => {
     });
     await enqueueJob("analytics", { event: "meeting_booked", inquiryId });
     res.json({ matched: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get("/contact/webhooks/whatsapp", async (req, res, next) => {
+  try {
+    const { handleConnectorWebhook } = await import("../lib/crm/connectors/http");
+    const { whatsappAdapter } = await import("../lib/crm/connectors/whatsapp");
+    await handleConnectorWebhook(req, res, whatsappAdapter);
+  } catch (err) {
+    next(err);
+  }
+});
+router.post("/contact/webhooks/whatsapp", async (req, res, next) => {
+  try {
+    const { handleConnectorWebhook } = await import("../lib/crm/connectors/http");
+    const { whatsappAdapter } = await import("../lib/crm/connectors/whatsapp");
+    await handleConnectorWebhook(req, res, whatsappAdapter);
+  } catch (err) {
+    next(err);
+  }
+});
+router.get("/contact/webhooks/meta", async (req, res, next) => {
+  try {
+    const { handleConnectorWebhook } = await import("../lib/crm/connectors/http");
+    const { messengerAdapter } = await import("../lib/crm/connectors/metaMessaging");
+    await handleConnectorWebhook(req, res, messengerAdapter);
+  } catch (err) {
+    next(err);
+  }
+});
+router.post("/contact/webhooks/meta", async (req, res, next) => {
+  try {
+    const { handleConnectorWebhook } = await import("../lib/crm/connectors/http");
+    const { messengerAdapter, instagramAdapter } = await import("../lib/crm/connectors/metaMessaging");
+    const objectName = req.body && typeof req.body === "object" ? String((req.body as { object?: string }).object ?? "page") : "page";
+    await handleConnectorWebhook(req, res, objectName === "instagram" ? instagramAdapter : messengerAdapter);
+  } catch (err) {
+    next(err);
+  }
+});
+router.get("/contact/webhooks/x", async (req, res, next) => {
+  try {
+    const { handleConnectorWebhook } = await import("../lib/crm/connectors/http");
+    const { xAdapter } = await import("../lib/crm/connectors/x");
+    await handleConnectorWebhook(req, res, xAdapter);
+  } catch (err) {
+    next(err);
+  }
+});
+router.post("/contact/webhooks/x", async (req, res, next) => {
+  try {
+    const { handleConnectorWebhook } = await import("../lib/crm/connectors/http");
+    const { xAdapter } = await import("../lib/crm/connectors/x");
+    await handleConnectorWebhook(req, res, xAdapter);
   } catch (err) {
     next(err);
   }

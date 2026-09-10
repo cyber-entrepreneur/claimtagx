@@ -48,14 +48,14 @@ export default function PreShiftPage() {
   });
 
   const shift = activeShiftQuery.data?.shift ?? null;
-  const myShiftHere = shift && venueCode && shift.venueCode === venueCode;
+  const myShiftHere = Boolean(shift && venueCode && shift.venueCode === venueCode);
   const shiftElsewhere = shift && venueCode && shift.venueCode !== venueCode ? shift : null;
 
   const teammatesCount = useMemo(() => {
     const rows = venueShiftsQuery.data ?? [];
-    if (!myShiftHere) return rows.length;
-    return rows.filter((row) => row.id !== myShiftHere.id).length;
-  }, [venueShiftsQuery.data, myShiftHere]);
+    if (!myShiftHere || !shift) return rows.length;
+    return rows.filter((row) => row.id !== shift.id).length;
+  }, [venueShiftsQuery.data, myShiftHere, shift]);
 
   const startMutation = useMutation({
     mutationFn: () => startShift({ venueCode }),

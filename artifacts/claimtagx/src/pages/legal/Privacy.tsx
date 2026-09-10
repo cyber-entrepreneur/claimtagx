@@ -1,18 +1,24 @@
 import SEO from '@/components/SEO';
+import { useI18n } from '@/lib/i18n';
+import { legalPageSeo } from '@/lib/seo/legalLocalization';
 
+// Shell chrome is localized; legal body copy requires qualified human review before translation or publication as localized law.
 export default function Privacy() {
+  const { t, locale } = useI18n();
   return (
     <>
       <SEO
-        title="Privacy Policy | ClaimTagX"
-        description="How ClaimTagX collects, processes, stores, and protects personal data."
+        {...legalPageSeo("/privacy", locale === "ar" ? "ar" : "en", {
+          title: t("legal.privacy.seoTitle"),
+          description: t("legal.privacy.seoDescription"),
+        })}
       />
       <div className="pt-32 pb-20 max-w-[800px] mx-auto px-4 sm:px-6">
-        <h1 className="text-4xl font-bold text-white mb-2">Privacy Policy</h1>
-        <p className="text-slate text-sm mb-2">Effective Date: April 20, 2026</p>
-        <p className="text-slate text-sm mb-10 pb-10 border-b border-white/10">Last Updated: April 17, 2026</p>
+        <h1 className="text-4xl font-bold text-white mb-2">{t('legal.privacy.title')}</h1>
+        <p className="text-ink text-sm mb-2">{t('legal.effectiveDate', { date: 'April 20, 2026' })}</p>
+        <p className="text-ink text-sm mb-10 pb-10 border-b border-white/10">{t('legal.lastUpdated', { date: 'April 17, 2026' })}</p>
 
-        <div className="prose prose-invert prose-slate max-w-none text-slate-300 space-y-4 leading-relaxed">
+        <div className="prose prose-invert prose-slate max-w-none text-ink-300 space-y-4 leading-relaxed">
           <h2 className="text-2xl font-bold text-white mt-10 mb-4">1. Introduction</h2>
           <p>ClaimTagX ("we," "our," "the Platform") is a digital custody management platform that enables organizations to issue, manage, track, and verify cryptographically signed digital claim tickets across multiple industries, including valet parking, hospitality, dry cleaning, laundry, luggage handling, repair services, and asset custody environments.</p>
           <p>This Privacy Policy explains how we collect, process, store, and protect personal data when individuals ("Users") interact with ClaimTagX through:</p>
@@ -192,8 +198,8 @@ export default function Privacy() {
           </ul>
           <p>For urgent security concerns or to report a data breach, contact: security@claimtagx.com</p>
 
-          <p className="text-slate text-sm italic mt-10 pt-10 border-t border-white/10">ClaimTagX is operated by Ali Achkar (sole proprietor). This notice will be updated upon formal incorporation.</p>
-          <p className="text-slate text-sm italic">© 2026 ClaimTagX. All rights reserved.</p>
+          <p className="text-ink text-sm italic mt-10 pt-10 border-t border-white/10">ClaimTagX is operated by Ali Achkar (sole proprietor). This notice will be updated upon formal incorporation.</p>
+          <p className="text-ink text-sm italic">© 2026 ClaimTagX. All rights reserved.</p>
         </div>
       </div>
     </>

@@ -1,8 +1,10 @@
-import { useEffect } from "react";
+import { lazy, Suspense, useEffect, useSyncExternalStore, type ComponentType } from "react";
+import { MotionConfig } from "framer-motion";
 import { Switch, Route, Router as WouterRouter, useLocation } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { I18nProvider, useI18n } from "@/lib/i18n";
 import NotFound from "@/pages/not-found";
 
 import Home from "@/pages/Home";
@@ -21,7 +23,8 @@ import Refund from "@/pages/legal/Refund";
 import Nav from "@/components/Nav";
 import Footer from "@/components/Footer";
 import CookieBanner from "@/components/CookieBanner";
-import AdminApp from "@/pages/admin/AdminApp";
+
+const AdminApp = lazy(() => import("@/pages/admin/AdminApp"));
 
 const queryClient = new QueryClient();
 
@@ -48,55 +51,87 @@ function ScrollToTop() {
   return null;
 }
 
+function localeRoutes(prefix: string, routes: Array<{ path: string; component: ComponentType }>) {
+  return routes.map(({ path, component: Component }) => (
+    <Route key={`${prefix}${path}`} path={`${prefix}${path}`} component={Component} />
+  ));
+}
+
 function Router() {
+  const pages: Array<{ path: string; component: ComponentType }> = [
+    { path: "/", component: Home },
+    { path: "/contact", component: Contact },
+    { path: "/demo-ticket", component: DemoTicket },
+    { path: "/security", component: Security },
+    { path: "/price", component: PricingPage },
+    { path: "/privacy", component: Privacy },
+    { path: "/terms", component: Terms },
+    { path: "/gdpr", component: GDPR },
+    { path: "/dpa", component: DPA },
+    { path: "/cookies", component: Cookies },
+    { path: "/aup", component: AUP },
+    { path: "/refund", component: Refund },
+  ];
+
   return (
     <Switch>
-      <Route path="/" component={Home} />
-      <Route path="/contact" component={Contact} />
+      {localeRoutes("", pages)}
+      {localeRoutes("/ar", pages)}
       <Route path="/solutions/:slug" component={SolutionPage} />
-      <Route path="/demo-ticket" component={DemoTicket} />
-      <Route path="/security" component={Security} />
+      <Route path="/ar/solutions/:slug" component={SolutionPage} />
       <Route path="/handler" component={HandlerRedirect} />
       <Route path="/handler/sign-in/*?" component={HandlerRedirect} />
       <Route path="/handler/sign-up/*?" component={HandlerRedirect} />
       <Route path="/handler/sso-callback/*?" component={HandlerRedirect} />
-      <Route path="/price" component={PricingPage} />
-      <Route path="/privacy" component={Privacy} />
-      <Route path="/terms" component={Terms} />
-      <Route path="/gdpr" component={GDPR} />
-      <Route path="/dpa" component={DPA} />
-      <Route path="/cookies" component={Cookies} />
-      <Route path="/aup" component={AUP} />
-      <Route path="/refund" component={Refund} />
       <Route component={NotFound} />
     </Switch>
   );
 }
 
 function App() {
+  const e2eStable = useSyncExternalStore(
+    () => () => undefined,
+    () => document.documentElement.dataset.e2eStable === "1",
+    () => false,
+  );
   return (
     <QueryClientProvider client={queryClient}>
+      <MotionConfig reducedMotion={e2eStable ? "always" : "user"}>
       <TooltipProvider>
         <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
-          <ScrollToTop />
-          <AppShell />
+          <I18nProvider>
+            <ScrollToTop />
+            <AppShell />
+          </I18nProvider>
         </WouterRouter>
         <Toaster />
       </TooltipProvider>
+      </MotionConfig>
     </QueryClientProvider>
   );
 }
 
 function AppShell() {
   const [location] = useLocation();
+  const { t } = useI18n();
   const isAdmin = location.startsWith("/admin");
   if (isAdmin) {
-    return <AdminApp />;
+    return (
+      <Suspense fallback={<div className="min-h-screen bg-obsidian text-ink grid place-items-center">{t("common.loadingWorkspace")}</div>}>
+        <AdminApp />
+      </Suspense>
+    );
   }
   return (
     <div className="flex min-h-screen flex-col bg-obsidian text-paper font-sans">
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:absolute focus:z-50 focus:top-2 focus:left-2 focus:rounded-lg focus:bg-lime focus:px-3 focus:py-2 focus:text-obsidian focus:font-semibold"
+      >
+        {t("common.skipToMain")}
+      </a>
       <Nav />
-      <main className="flex-1">
+      <main id="main-content" className="flex-1" tabIndex={-1}>
         <Router />
       </main>
       <Footer />

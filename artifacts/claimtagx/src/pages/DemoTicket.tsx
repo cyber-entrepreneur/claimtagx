@@ -40,7 +40,7 @@ export default function DemoTicket() {
             {/* Header */}
             <div className="bg-obsidian/60 border-b border-white/10 p-6 flex items-center justify-between">
               <div>
-                <p className="font-mono text-xs text-slate uppercase tracking-wider mb-1">The Grandview Hotel · Valet</p>
+                <p className="font-mono text-xs text-ink uppercase tracking-wider mb-1">The Grandview Hotel · Valet</p>
                 <p className="text-white font-bold text-xl font-mono">Ticket #4839</p>
               </div>
               <div className="flex items-center gap-1.5 bg-lime/10 border border-lime/30 rounded-full px-3 py-1.5">
@@ -57,7 +57,7 @@ export default function DemoTicket() {
                 </div>
                 <div>
                   <p className="text-white font-semibold">Black SUV · Plate 8-XKR-442</p>
-                  <p className="text-slate text-sm mt-1">4 intake photos on record — condition documented at 7:42 PM</p>
+                  <p className="text-ink text-sm mt-1">4 intake photos on record — condition documented at 7:42 PM</p>
                 </div>
               </div>
             </div>
@@ -77,9 +77,9 @@ export default function DemoTicket() {
                     <div className="flex-1">
                       <div className="flex items-baseline justify-between">
                         <p className={`font-semibold ${step.done ? 'text-white' : 'text-lime'}`}>{step.label}</p>
-                        <p className="text-xs text-slate font-mono">{step.time}</p>
+                        <p className="text-xs text-ink font-mono">{step.time}</p>
                       </div>
-                      <p className="text-sm text-slate">{step.detail}</p>
+                      <p className="text-sm text-ink">{step.detail}</p>
                     </div>
                   </div>
                 ))}
@@ -91,7 +91,7 @@ export default function DemoTicket() {
               <div className="bg-white p-4 rounded-2xl mb-4">
                 <QrCode className="w-28 h-28 text-obsidian" strokeWidth={1.25} />
               </div>
-              <p className="text-sm text-slate text-center">
+              <p className="text-sm text-ink text-center">
                 Show this code at pickup. One scan verifies you — and releases your vehicle.
               </p>
             </div>
@@ -107,7 +107,7 @@ export default function DemoTicket() {
             <h1 className="text-2xl font-bold text-white mb-3">
               Notice what you didn't do?
             </h1>
-            <p className="text-slate leading-relaxed mb-8">
+            <p className="text-ink leading-relaxed mb-8">
               No app store. No account. No download. This ticket is a link — delivered by
               text, WhatsApp, or email — and it works on every phone your guests own.
             </p>
@@ -121,7 +121,7 @@ export default function DemoTicket() {
               Issue tickets like this — free
               <ArrowRight className="w-5 h-5" />
             </a>
-            <p className="text-xs text-slate/60 mt-4">Free plan forever · No credit card · Live in 60 seconds</p>
+            <p className="text-xs text-ink/60 mt-4">Free plan forever · No credit card · Live in 60 seconds</p>
           </motion.div>
         </div>
       </div>

@@ -1,0 +1,14 @@
+[
+  {
+    "from": "/handler",
+    "to": "/handler/",
+    "status": 301,
+    "reason": "Normalize handler mount path"
+  },
+  {
+    "from": "/pricing",
+    "to": "/price",
+    "status": 301,
+    "reason": "Legacy pricing URL"
+  }
+]

@@ -16,11 +16,17 @@ function mapType(type: NumberType | undefined): string | null {
   return String(type).toLowerCase();
 }
 
+function foldIndicDigits(raw: string): string {
+  return raw
+    .replace(/[\u0660-\u0669]/g, (ch) => String(ch.charCodeAt(0) - 0x0660))
+    .replace(/[\u06f0-\u06f9]/g, (ch) => String(ch.charCodeAt(0) - 0x06f0));
+}
+
 export function normalizePhone(
   raw: string | undefined | null,
   country: string,
 ): NormalizedPhone {
-  const phoneRaw = (raw ?? "").trim();
+  const phoneRaw = foldIndicDigits((raw ?? "").trim());
   if (!phoneRaw) {
     return {
       phoneRaw: "",
@@ -47,6 +53,17 @@ export function normalizePhone(
   const valid = parsed.isValid();
   const possible = parsed.isPossible();
   const type = parsed.getType();
+  if (parsed.ext) {
+    return {
+      phoneRaw,
+      phoneCountry: parsed.country ?? country,
+      phoneCountryCallingCode: String(parsed.countryCallingCode),
+      phoneNationalNumber: parsed.nationalNumber,
+      phoneE164: null,
+      phoneValidationStatus: "invalid",
+      phoneType: mapType(type),
+    };
+  }
   return {
     phoneRaw,
     phoneCountry: parsed.country ?? country,

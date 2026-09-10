@@ -327,6 +327,12 @@ let seeded = false;
 
 export async function ensureCrmSeeded(): Promise<void> {
   if (seeded) return;
+  // Production configuration must be applied via versioned migrations / controlled deploy.
+  // Runtime seeding remains for empty environments unless explicitly skipped.
+  if (process.env.CRM_SKIP_RUNTIME_SEED === "true") {
+    seeded = true;
+    return;
+  }
   await upsertTaxonomy();
 
   const [team] = await db

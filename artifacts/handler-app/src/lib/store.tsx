@@ -8,7 +8,7 @@ import {
   type ReactNode,
 } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useAuth, useClerk, useUser } from "@clerk/react";
+import { logout as apiLogout } from "./authApi";
 import {
   createAsset,
   getAssetByTicket,
@@ -114,9 +114,6 @@ function readStoredVenue(): string | null {
 }
 
 export function StoreProvider({ children }: { children: ReactNode }) {
-  const { isLoaded: authLoaded, isSignedIn } = useAuth();
-  const { user } = useUser();
-  const clerk = useClerk();
   const queryClient = useQueryClient();
 
   const [activeVenueCode, setActiveVenueCodeState] = useState<string | null>(
@@ -130,23 +127,23 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     } catch {}
   }, [activeVenueCode]);
 
-  // Pull membership info from server. /api/me reads memberships from the
-  // handler_venues table (server-authoritative), not from client state.
+  // Pull membership info from server. /api/me reads identity + memberships
+  // from server-authoritative tables using the httpOnly session cookie. A 401
+  // means the handler is signed out; anything else is a transient error.
   const meQuery = useQuery({
-    queryKey: ["me", user?.id ?? null],
+    queryKey: ["me"],
     queryFn: fetchMe,
-    enabled: Boolean(authLoaded && isSignedIn),
     staleTime: 30_000,
+    retry: (count, err) =>
+      (err as { status?: number } | undefined)?.status !== 401 && count < 2,
   });
 
+  const authLoaded = meQuery.isFetched;
+  const isSignedIn = meQuery.isSuccess && Boolean(meQuery.data);
+
   const venues = meQuery.data?.venues ?? [];
-  const email = meQuery.data?.email ?? user?.primaryEmailAddress?.emailAddress ?? "";
-  const handlerName =
-    meQuery.data?.name ??
-    ([user?.firstName, user?.lastName].filter(Boolean).join(" ").trim() ||
-      user?.username ||
-      email.split("@")[0] ||
-      "Handler");
+  const email = meQuery.data?.email ?? "";
+  const handlerName = meQuery.data?.name || email.split("@")[0] || "Handler";
 
   // Reconcile active venue with the membership list.
   useEffect(() => {
@@ -499,26 +496,26 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     async (inviteToken) => {
       const { venues: next, joined } = await apiJoinVenue(inviteToken);
       queryClient.setQueryData(
-        ["me", user?.id ?? null],
+        ["me"],
         (prev: typeof meQuery.data) => (prev ? { ...prev, venues: next } : prev),
       );
       if (joined?.code) setActiveVenueCodeState(joined.code.toUpperCase());
       return next;
     },
-    [queryClient, user?.id, meQuery.data],
+    [queryClient, meQuery.data],
   );
 
   const leave: StoreCtx["leaveVenue"] = useCallback(
     async (code) => {
       const { venues: next } = await apiLeaveVenue(code);
       queryClient.setQueryData(
-        ["me", user?.id ?? null],
+        ["me"],
         (prev: typeof meQuery.data) => (prev ? { ...prev, venues: next } : prev),
       );
       setActiveVenueCodeState((cur) => (cur === code ? next[0]?.code ?? null : cur));
       return next;
     },
-    [queryClient, user?.id, meQuery.data],
+    [queryClient, meQuery.data],
   );
 
   const setActiveVenue = useCallback((code: string) => {
@@ -526,13 +523,18 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const signOutFn = useCallback(async () => {
-    queryClient.clear();
+    try {
+      await apiLogout();
+    } catch {
+      // best effort — clear local state regardless of network result
+    }
     setActiveVenueCodeState(null);
     try {
       localStorage.removeItem(ACTIVE_VENUE_KEY);
     } catch {}
-    await clerk.signOut();
-  }, [clerk, queryClient]);
+    queryClient.clear();
+    await queryClient.invalidateQueries({ queryKey: ["me"] });
+  }, [queryClient]);
 
   const ready =
     Boolean(authLoaded) &&

@@ -15,7 +15,10 @@ async function buildAll() {
   await rm(distDir, { recursive: true, force: true });
 
   await esbuild({
-    entryPoints: [path.resolve(artifactDir, "src/index.ts")],
+    entryPoints: [
+      path.resolve(artifactDir, "src/index.ts"),
+      path.resolve(artifactDir, "src/worker.ts"),
+    ],
     platform: "node",
     bundle: true,
     format: "esm",
@@ -35,6 +38,8 @@ async function buildAll() {
       "canvas",
       "bcrypt",
       "argon2",
+      "@node-rs/argon2",
+      "@node-rs/argon2-*",
       "fsevents",
       "re2",
       "farmhash",

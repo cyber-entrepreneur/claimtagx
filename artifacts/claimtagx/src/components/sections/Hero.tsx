@@ -5,19 +5,21 @@ import { ArrowRight, QrCode } from 'lucide-react';
 import heroMockup from '@/assets/hero-mockup.png';
 import NodeNetworkBg from '@/components/NodeNetworkBg';
 import { track } from '@/lib/analytics';
+import { useI18n } from '@/lib/i18n';
 
-const industryLinks = [
-  { label: 'Hotel', href: '/solutions/hotels' },
-  { label: 'Club / restaurant', href: '/solutions/clubs-restaurants' },
-  { label: 'Beach club', href: '/solutions/beach-clubs' },
-  { label: 'Valet operation', href: '/solutions/valet' },
-  { label: 'Dry cleaner', href: '/solutions/dry-cleaning' },
-  { label: 'Luggage check', href: '/solutions/luggage' },
-  { label: 'Repair shop', href: '/solutions/repair' },
-  { label: 'Airline', href: '/solutions/airlines' },
-];
+const industryKeys = [
+  { key: 'hotels', href: '/solutions/hotels' },
+  { key: 'clubs', href: '/solutions/clubs-restaurants' },
+  { key: 'beachClubs', href: '/solutions/beach-clubs' },
+  { key: 'valet', href: '/solutions/valet' },
+  { key: 'dryCleaning', href: '/solutions/dry-cleaning' },
+  { key: 'luggage', href: '/solutions/luggage' },
+  { key: 'repair', href: '/solutions/repair' },
+  { key: 'airlines', href: '/solutions/airlines' },
+] as const;
 
 export default function Hero() {
+  const { t, localizedPath } = useI18n();
   // Phone-wrap-relative mouse tracking — the rotation only responds when the
   // pointer is near/over the phone, so the effect feels direct instead of
   // diluted across the whole viewport.
@@ -66,7 +68,7 @@ export default function Hero() {
                 transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
                 className="w-2 h-2 rounded-full bg-lime"
               />
-              <span className="text-sm font-medium text-white/90">Free plan available — live in 60 seconds</span>
+              <span className="text-sm font-medium text-white">{t('home.hero.badge')}</span>
             </motion.div>
 
             {/* Heading */}
@@ -77,8 +79,8 @@ export default function Hero() {
               className="font-extrabold tracking-tight leading-[1.1] mb-6 w-full"
               style={{ fontSize: "clamp(40px, 5vw, 64px)" }}
             >
-              <span className="block text-white">Paper tickets lose items.</span>
-              <span className="block text-shimmer">ClaimTagX doesn't.</span>
+              <span className="block text-white">{t('home.hero.titleLine1')}</span>
+              <span className="block text-shimmer">{t('home.hero.titleLine2')}</span>
             </motion.h1>
 
             {/* Subtext */}
@@ -86,9 +88,9 @@ export default function Hero() {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.5, delay: 0.2 }}
-              className="text-lg md:text-xl text-slate mb-10 leading-relaxed max-w-lg"
+              className="text-lg md:text-xl text-ink mb-10 leading-relaxed max-w-lg"
             >
-              A paper ticket can only prove a claim exists. ClaimTagX shows you everything that happens after — every handler, every handoff, every minute in between — at the same price per ticket as paper.
+              {t('home.hero.subtitle')}
             </motion.p>
 
             {/* CTAs */}
@@ -103,18 +105,18 @@ export default function Hero() {
                 target="_blank"
                 rel="noopener noreferrer"
                 onClick={() => track('cta_clicked', { action: 'start_free', location: 'hero' })}
-                className="w-full sm:w-auto bg-lime text-obsidian px-8 py-4 rounded-lg font-bold text-lg hover:bg-lime-hover hover:-translate-y-px hover:shadow-[0_0_30px_rgba(198,242,78,0.4)] transition-all duration-200 text-center"
+                className="w-full sm:w-auto cta-lime px-8 py-4 rounded-lg font-bold text-lg text-center"
               >
-                Start free — no card needed
+                {t('home.hero.startFree')}
               </a>
               <a
                 href="https://calendly.com/claimtagx/demo"
                 target="_blank"
                 rel="noopener noreferrer"
                 onClick={() => track('cta_clicked', { action: 'book_demo', location: 'hero' })}
-                className="w-full sm:w-auto border border-white/15 text-white px-8 py-4 rounded-lg font-bold text-lg hover:border-lime/40 hover:text-lime transition-all duration-200 group flex items-center justify-center gap-2"
+                className="w-full sm:w-auto cta-steel border border-white px-8 py-4 rounded-lg font-bold text-lg group flex items-center justify-center gap-2"
               >
-                Book a demo
+                {t('home.hero.bookDemo')}
                 <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
               </a>
             </motion.div>
@@ -124,9 +126,9 @@ export default function Hero() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ duration: 0.5, delay: 0.4 }}
-              className="text-sm text-slate/80 mb-10"
+              className="text-sm text-ink mb-10"
             >
-              Free plan forever · No credit card · Cancel anytime
+              {t('home.hero.riskReversal')}
             </motion.p>
 
             {/* Industry selector — self-identification routes to the vertical pages */}
@@ -137,17 +139,17 @@ export default function Hero() {
               className="mb-16 w-full border-t border-white/10 pt-8"
             >
               <p className="text-base font-bold text-white mb-4">
-                I run a<span className="text-lime">…</span>
+                {t('home.hero.industryPrompt')}<span className="text-lime">…</span>
               </p>
               <div className="flex flex-wrap gap-2.5">
-                {industryLinks.map((ind) => (
+                {industryKeys.map((ind) => (
                   <Link
                     key={ind.href}
-                    href={ind.href}
-                    onClick={() => track('industry_selected', { industry: ind.href.replace('/solutions/', ''), label: ind.label, location: 'hero' })}
-                    className="group/pill flex items-center gap-1.5 text-sm font-semibold text-white bg-steel/80 border border-lime/25 rounded-full px-4 py-2.5 hover:border-lime hover:bg-lime hover:text-obsidian transition-all duration-200"
+                    href={localizedPath(ind.href)}
+                    onClick={() => track('industry_selected', { industry: ind.href.replace('/solutions/', ''), label: ind.key, location: 'hero' })}
+                    className="group/pill flex items-center gap-1.5 text-sm font-semibold text-white bg-steel/80 border border-lime/25 rounded-full px-4 py-2.5 hover:border-lime hover:bg-lime hover:text-obsidian"
                   >
-                    {ind.label}
+                    {t(`home.hero.industries.${ind.key}`)}
                     <ArrowRight className="w-3.5 h-3.5 text-lime group-hover/pill:text-obsidian group-hover/pill:translate-x-0.5 transition-all" />
                   </Link>
                 ))}
@@ -183,14 +185,14 @@ export default function Hero() {
               }}
             >
             <div className="relative w-full animate-float">
-              <img 
-                src={heroMockup} 
-                alt="ClaimTagX App Mockup" 
+              <img
+                src={heroMockup}
+                alt={t('home.hero.mockupAlt')}
                 className="w-full h-auto drop-shadow-[0_0_50px_rgba(198,242,78,0.15)] relative z-10 rounded-[2.5rem]"
               />
-              
+
               {/* Floating QR Element */}
-              <motion.div 
+              <motion.div
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 1, duration: 0.5 }}
@@ -201,13 +203,13 @@ export default function Hero() {
                   <QrCode className="w-8 h-8 text-obsidian" />
                 </div>
                 <div>
-                  <div className="text-xs font-mono text-lime font-bold">VERIFIED</div>
-                  <div className="text-sm text-white font-medium">Ticket #4839</div>
+                  <div className="text-xs font-mono text-lime font-bold">{t('home.hero.chipVerified')}</div>
+                  <div className="text-sm text-white font-medium">{t('home.hero.chipTicket')}</div>
                 </div>
               </motion.div>
-              
+
               {/* Floating Issue Time Element */}
-              <motion.div 
+              <motion.div
                 initial={{ opacity: 0, x: -20 }}
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ delay: 1.2, duration: 0.5 }}
@@ -216,7 +218,7 @@ export default function Hero() {
               >
                 <div className="w-2 h-2 rounded-full bg-lime animate-pulse" />
                 <div className="text-sm text-white font-medium">
-                  &lt;2s <span className="text-slate">issue time</span>
+                  {t('home.hero.chipIssueTime')} <span className="text-ink">{t('home.hero.chipIssueTimeLabel')}</span>
                 </div>
               </motion.div>
             </div>

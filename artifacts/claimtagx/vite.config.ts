@@ -58,20 +58,45 @@ export default defineConfig({
   root: path.resolve(import.meta.dirname),
   build: {
     outDir: path.resolve(import.meta.dirname, "dist/public"),
-    emptyOutDir: true,
+    manifest: true,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes("/pages/admin/") || id.includes("\\pages\\admin\\")) return "admin";
+          if (id.includes("/pages/legal/") || id.includes("\\pages\\legal\\")) return "legal";
+          if (id.includes("/pages/Solution") || id.includes("\\pages\\Solution")) return "solution";
+          return undefined;
+        },
+      },
+    },
   },
   server: {
     port,
-    host: "0.0.0.0",
+    host: process.env.VITE_LISTEN_HOST ?? "127.0.0.1",
     allowedHosts: true,
     fs: {
       strict: true,
       deny: ["**/.*"],
     },
+    // Local admin/Contact E2E: forward /api to isolated API (CRM_E2E_API / 18080).
+    proxy: {
+      "/api": {
+        target: process.env.VITE_API_PROXY_TARGET ?? "http://127.0.0.1:18080",
+        changeOrigin: true,
+      },
+    },
   },
   preview: {
     port,
-    host: "0.0.0.0",
+    host: process.env.VITE_LISTEN_HOST ?? "127.0.0.1",
     allowedHosts: true,
+    // Same-origin /api proxy so first-party cookie sessions work in preview/E2E
+    // (cross-origin absolute VITE_API_URL cannot set HttpOnly cookies for the SPA origin).
+    proxy: {
+      "/api": {
+        target: process.env.VITE_API_PROXY_TARGET ?? "http://127.0.0.1:18080",
+        changeOrigin: true,
+      },
+    },
   },
 });

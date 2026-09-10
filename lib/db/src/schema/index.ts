@@ -11,3 +11,4 @@ export * from "./messages";
 export * from "./intercom";
 export * from "./marketingEvents";
 export * from "./crm";
+export * from "./auth";

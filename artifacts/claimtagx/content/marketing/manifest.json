@@ -1,0 +1,36 @@
+{
+  "version": 1,
+  "pages": [
+    {
+      "id": "home.hero",
+      "status": "published",
+      "locales": ["en", "ar"],
+      "updatedAt": "2026-09-01T00:00:00.000Z",
+      "author": "marketing@claimtagx.com",
+      "reviewer": "ops@claimtagx.com"
+    },
+    {
+      "id": "contact.hero",
+      "status": "published",
+      "locales": ["en", "ar"],
+      "updatedAt": "2026-09-01T00:00:00.000Z",
+      "author": "marketing@claimtagx.com",
+      "reviewer": "ops@claimtagx.com"
+    },
+    {
+      "id": "pricing.hero",
+      "status": "published",
+      "locales": ["en"],
+      "updatedAt": "2026-09-01T00:00:00.000Z",
+      "author": "marketing@claimtagx.com",
+      "reviewer": "ops@claimtagx.com"
+    },
+    {
+      "id": "legal.privacy.banner",
+      "status": "draft",
+      "locales": ["en"],
+      "updatedAt": "2026-08-15T00:00:00.000Z",
+      "author": "legal@claimtagx.com"
+    }
+  ]
+}

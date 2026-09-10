@@ -1,5 +1,6 @@
-import { Link } from 'wouter';
-import { Linkedin, Twitter, Instagram } from 'lucide-react';
+import { Link } from "wouter";
+import { Linkedin, Twitter, Instagram } from "lucide-react";
+import { useI18n } from "@/lib/i18n";
 
 function ThreadsIcon({ size = 20 }: { size?: number }) {
   return (
@@ -18,94 +19,90 @@ function TikTokIcon({ size = 20 }: { size?: number }) {
 }
 
 export default function Footer() {
+  const { t, localizedPath } = useI18n();
   const currentYear = new Date().getFullYear();
+  const home = localizedPath("/");
 
   return (
     <footer className="bg-[#05080f] pt-20 pb-10 border-t border-white/5">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="grid grid-cols-1 md:grid-cols-5 gap-12 md:gap-8 lg:gap-12 mb-16">
-          {/* Brand Column */}
           <div className="col-span-1 md:col-span-1 lg:col-span-1">
-            <Link href="/" className="flex items-center gap-1 mb-4 inline-block">
+            <Link href={home} className="flex items-center gap-1 mb-4 inline-block">
               <span className="font-sans font-extrabold text-2xl tracking-tight text-white">Claim</span>
               <span className="font-sans font-extrabold text-2xl tracking-tight text-lime">TagX</span>
             </Link>
-            <p className="text-slate text-sm leading-relaxed max-w-xs">
-              Replace paper claim tickets with cryptographically signed digital tags.
-            </p>
+            <p className="text-ink text-sm leading-relaxed max-w-xs">{t("footer.tagline")}</p>
           </div>
 
-          {/* Links Columns */}
           <div className="col-span-1">
-            <h4 className="text-white font-semibold text-sm mb-4 uppercase tracking-wider">Product</h4>
+            <h4 className="text-white font-semibold text-sm mb-4 uppercase tracking-wider">{t("footer.product")}</h4>
             <ul className="flex flex-col gap-3">
-              <li><a href="/#features" className="text-slate hover:text-lime transition-colors text-sm">Features</a></li>
-              <li><Link href="/price" className="text-slate hover:text-lime transition-colors text-sm">Pricing</Link></li>
-              <li><a href="/#industries" className="text-slate hover:text-lime transition-colors text-sm">Industries</a></li>
-              <li><a href="/#how" className="text-slate hover:text-lime transition-colors text-sm">How it works</a></li>
+              <li><a href={`${home}#features`} className="text-ink hover:text-lime transition-colors text-sm">{t("footer.features")}</a></li>
+              <li><Link href={localizedPath("/price")} className="text-ink hover:text-lime transition-colors text-sm">{t("footer.pricing")}</Link></li>
+              <li><a href={`${home}#industries`} className="text-ink hover:text-lime transition-colors text-sm">{t("footer.industries")}</a></li>
+              <li><a href={`${home}#how`} className="text-ink hover:text-lime transition-colors text-sm">{t("footer.howItWorks")}</a></li>
             </ul>
           </div>
 
           <div className="col-span-1">
-            <h4 className="text-white font-semibold text-sm mb-4 uppercase tracking-wider">Solutions</h4>
+            <h4 className="text-white font-semibold text-sm mb-4 uppercase tracking-wider">{t("footer.solutions")}</h4>
             <ul className="flex flex-col gap-3">
-              <li><Link href="/solutions/hotels" className="text-slate hover:text-lime transition-colors text-sm">Hotels &amp; Resorts</Link></li>
-              <li><Link href="/solutions/clubs-restaurants" className="text-slate hover:text-lime transition-colors text-sm">Clubs &amp; Restaurants</Link></li>
-              <li><Link href="/solutions/beach-clubs" className="text-slate hover:text-lime transition-colors text-sm">Beach Clubs</Link></li>
-              <li><Link href="/solutions/valet" className="text-slate hover:text-lime transition-colors text-sm">Valet Parking</Link></li>
-              <li><Link href="/solutions/dry-cleaning" className="text-slate hover:text-lime transition-colors text-sm">Dry Cleaning</Link></li>
-              <li><Link href="/solutions/luggage" className="text-slate hover:text-lime transition-colors text-sm">Luggage Check</Link></li>
-              <li><Link href="/solutions/repair" className="text-slate hover:text-lime transition-colors text-sm">Repair Services</Link></li>
-              <li><Link href="/solutions/airlines" className="text-slate hover:text-lime transition-colors text-sm">Airlines</Link></li>
+              <li><Link href={localizedPath("/solutions/hotels")} className="text-ink hover:text-lime transition-colors text-sm">{t("footer.hotels")}</Link></li>
+              <li><Link href={localizedPath("/solutions/clubs-restaurants")} className="text-ink hover:text-lime transition-colors text-sm">{t("footer.clubs")}</Link></li>
+              <li><Link href={localizedPath("/solutions/beach-clubs")} className="text-ink hover:text-lime transition-colors text-sm">{t("footer.beachClubs")}</Link></li>
+              <li><Link href={localizedPath("/solutions/valet")} className="text-ink hover:text-lime transition-colors text-sm">{t("footer.valet")}</Link></li>
+              <li><Link href={localizedPath("/solutions/dry-cleaning")} className="text-ink hover:text-lime transition-colors text-sm">{t("footer.dryCleaning")}</Link></li>
+              <li><Link href={localizedPath("/solutions/luggage")} className="text-ink hover:text-lime transition-colors text-sm">{t("footer.luggage")}</Link></li>
+              <li><Link href={localizedPath("/solutions/repair")} className="text-ink hover:text-lime transition-colors text-sm">{t("footer.repair")}</Link></li>
+              <li><Link href={localizedPath("/solutions/airlines")} className="text-ink hover:text-lime transition-colors text-sm">{t("footer.airlines")}</Link></li>
             </ul>
           </div>
 
           <div className="col-span-1">
-            <h4 className="text-white font-semibold text-sm mb-4 uppercase tracking-wider">Company</h4>
+            <h4 className="text-white font-semibold text-sm mb-4 uppercase tracking-wider">{t("footer.company")}</h4>
             <ul className="flex flex-col gap-3">
-              <li><Link href="/contact" className="text-slate hover:text-lime transition-colors text-sm">Contact Us</Link></li>
-              <li><a href="mailto:info@claimtagx.com" className="text-slate hover:text-lime transition-colors text-sm">Send us an Email</a></li>
-              <li><a href="https://linkedin.com/company/Claimtagx" target="_blank" rel="noopener noreferrer" className="text-slate hover:text-lime transition-colors text-sm">LinkedIn</a></li>
-              <li><a href="https://x.com/Claimtagx" target="_blank" rel="noopener noreferrer" className="text-slate hover:text-lime transition-colors text-sm">X</a></li>
-              <li><a href="https://instagram.com/Claimtagx" target="_blank" rel="noopener noreferrer" className="text-slate hover:text-lime transition-colors text-sm">Instagram</a></li>
-              <li><a href="https://threads.net/@Claimtagx" target="_blank" rel="noopener noreferrer" className="text-slate hover:text-lime transition-colors text-sm">Threads</a></li>
-              <li><a href="https://tiktok.com/@Claimtagx" target="_blank" rel="noopener noreferrer" className="text-slate hover:text-lime transition-colors text-sm">TikTok</a></li>
+              <li><Link href={localizedPath("/contact")} className="text-ink hover:text-lime transition-colors text-sm">{t("footer.contact")}</Link></li>
+              <li><a href="mailto:info@claimtagx.com" className="text-ink hover:text-lime transition-colors text-sm">{t("footer.sendEmail")}</a></li>
+              <li><a href="https://linkedin.com/company/Claimtagx" target="_blank" rel="noopener noreferrer" className="text-ink hover:text-lime transition-colors text-sm">LinkedIn</a></li>
+              <li><a href="https://x.com/Claimtagx" target="_blank" rel="noopener noreferrer" className="text-ink hover:text-lime transition-colors text-sm">X</a></li>
+              <li><a href="https://instagram.com/Claimtagx" target="_blank" rel="noopener noreferrer" className="text-ink hover:text-lime transition-colors text-sm">Instagram</a></li>
+              <li><a href="https://threads.net/@Claimtagx" target="_blank" rel="noopener noreferrer" className="text-ink hover:text-lime transition-colors text-sm">Threads</a></li>
+              <li><a href="https://tiktok.com/@Claimtagx" target="_blank" rel="noopener noreferrer" className="text-ink hover:text-lime transition-colors text-sm">TikTok</a></li>
             </ul>
           </div>
 
           <div className="col-span-1">
-            <h4 className="text-white font-semibold text-sm mb-4 uppercase tracking-wider">Legal</h4>
+            <h4 className="text-white font-semibold text-sm mb-4 uppercase tracking-wider">{t("footer.legal")}</h4>
             <ul className="flex flex-col gap-3">
-              <li><Link href="/security" className="text-slate hover:text-lime transition-colors text-sm">Security &amp; Trust</Link></li>
-              <li><Link href="/privacy" className="text-slate hover:text-lime transition-colors text-sm">Privacy Policy</Link></li>
-              <li><Link href="/terms" className="text-slate hover:text-lime transition-colors text-sm">Terms of Use</Link></li>
-              <li><Link href="/refund" className="text-slate hover:text-lime transition-colors text-sm">Refund Policy</Link></li>
-              <li><Link href="/cookies" className="text-slate hover:text-lime transition-colors text-sm">Cookie Policy</Link></li>
-              <li><Link href="/gdpr" className="text-slate hover:text-lime transition-colors text-sm">GDPR</Link></li>
-              <li><Link href="/dpa" className="text-slate hover:text-lime transition-colors text-sm">Data Processing</Link></li>
-              <li><Link href="/aup" className="text-slate hover:text-lime transition-colors text-sm">Acceptable Use</Link></li>
+              <li><Link href={localizedPath("/security")} className="text-ink hover:text-lime transition-colors text-sm">{t("footer.security")}</Link></li>
+              <li><Link href={localizedPath("/privacy")} className="text-ink hover:text-lime transition-colors text-sm">{t("footer.privacy")}</Link></li>
+              <li><Link href={localizedPath("/terms")} className="text-ink hover:text-lime transition-colors text-sm">{t("footer.terms")}</Link></li>
+              <li><Link href={localizedPath("/refund")} className="text-ink hover:text-lime transition-colors text-sm">{t("footer.refund")}</Link></li>
+              <li><Link href={localizedPath("/cookies")} className="text-ink hover:text-lime transition-colors text-sm">{t("footer.cookies")}</Link></li>
+              <li><Link href={localizedPath("/gdpr")} className="text-ink hover:text-lime transition-colors text-sm">{t("footer.gdpr")}</Link></li>
+              <li><Link href={localizedPath("/dpa")} className="text-ink hover:text-lime transition-colors text-sm">{t("footer.dpa")}</Link></li>
+              <li><Link href={localizedPath("/aup")} className="text-ink hover:text-lime transition-colors text-sm">{t("footer.aup")}</Link></li>
             </ul>
           </div>
         </div>
 
         <div className="pt-8 border-t border-white/5 flex flex-col md:flex-row justify-between items-center gap-4">
-          <p className="text-slate text-sm">
-            © {currentYear} ClaimTagX. All rights reserved.
-          </p>
+          <p className="text-ink text-sm">{t("footer.copyright", { year: currentYear })}</p>
           <div className="flex gap-4">
-            <a href="https://linkedin.com/company/Claimtagx" target="_blank" rel="noopener noreferrer" className="text-slate hover:text-white transition-colors">
+            <a href="https://linkedin.com/company/Claimtagx" target="_blank" rel="noopener noreferrer" className="text-ink hover:text-white transition-colors" aria-label="LinkedIn">
               <Linkedin size={20} />
             </a>
-            <a href="https://x.com/Claimtagx" target="_blank" rel="noopener noreferrer" className="text-slate hover:text-white transition-colors" aria-label="X">
+            <a href="https://x.com/Claimtagx" target="_blank" rel="noopener noreferrer" className="text-ink hover:text-white transition-colors" aria-label="X">
               <Twitter size={20} />
             </a>
-            <a href="https://instagram.com/Claimtagx" target="_blank" rel="noopener noreferrer" className="text-slate hover:text-white transition-colors" aria-label="Instagram">
+            <a href="https://instagram.com/Claimtagx" target="_blank" rel="noopener noreferrer" className="text-ink hover:text-white transition-colors" aria-label="Instagram">
               <Instagram size={20} />
             </a>
-            <a href="https://threads.net/@Claimtagx" target="_blank" rel="noopener noreferrer" className="text-slate hover:text-white transition-colors" aria-label="Threads">
+            <a href="https://threads.net/@Claimtagx" target="_blank" rel="noopener noreferrer" className="text-ink hover:text-white transition-colors" aria-label="Threads">
               <ThreadsIcon size={20} />
             </a>
-            <a href="https://tiktok.com/@Claimtagx" target="_blank" rel="noopener noreferrer" className="text-slate hover:text-white transition-colors" aria-label="TikTok">
+            <a href="https://tiktok.com/@Claimtagx" target="_blank" rel="noopener noreferrer" className="text-ink hover:text-white transition-colors" aria-label="TikTok">
               <TikTokIcon size={20} />
             </a>
           </div>

@@ -38,7 +38,9 @@ async function jsonFetch<T>(url: string, init?: RequestInit): Promise<T> {
     } catch {
       // ignore
     }
-    throw new Error(message);
+    // Attach the HTTP status so callers (e.g. the session gate) can treat a
+    // 401 as "signed out" rather than a hard error.
+    throw Object.assign(new Error(message), { status: res.status });
   }
   if (res.status === 204) return null as T;
   return (await res.json()) as T;

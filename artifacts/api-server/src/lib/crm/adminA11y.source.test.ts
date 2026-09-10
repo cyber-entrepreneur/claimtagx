@@ -1,0 +1,50 @@
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { describe, it } from "node:test";
+
+const adminRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..", "claimtagx", "src", "pages", "admin");
+
+describe("admin workspace accessibility (source)", () => {
+  it("labels inbox search and composer, and handles reply conflicts", () => {
+    const adminApp = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..", "claimtagx", "src", "pages", "admin", "AdminApp.tsx"), "utf8");
+    const app = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..", "claimtagx", "src", "App.tsx"), "utf8");
+    const inbox = readFileSync(join(adminRoot, "Inbox.tsx"), "utf8");
+    const workspace = readFileSync(join(adminRoot, "InquiryWorkspace.tsx"), "utf8");
+    const config = readFileSync(join(adminRoot, "Config.tsx"), "utf8");
+    assert.match(inbox, /<label/);
+    assert.match(inbox, /bulkStatusPlatformInquiries/);
+    assert.match(inbox, /PermissionGate|inquiries\.assign/);
+    assert.match(inbox, /failed/);
+    assert.match(inbox, /role="alert"/);
+    assert.match(inbox, /onKeyDown/);
+    assert.match(workspace, /aria-label/);
+    assert.match(workspace, /expectedUpdatedAt|expectedLockVersion/);
+    assert.match(workspace, /role="alert"/);
+    assert.match(config, /Change control/);
+    assert.match(config, /createDraftChange|config\/changes/);
+    assert.match(config, /Loading configuration/);
+    assert.match(config, /ErrorBanner/);
+    assert.match(config, /EmptyState/);
+    assert.match(config, /role="tablist"/);
+    assert.match(config, /expectedUpdatedAt|status === 409/);
+    const analytics = readFileSync(join(adminRoot, "Analytics.tsx"), "utf8");
+    assert.match(analytics, /inquiryType=/);
+    assert.match(analytics, /role="alert"/);
+    assert.match(analytics, /role="status"/);
+    assert.match(analytics, /<table/);
+    assert.match(analytics, /<caption/);
+    assert.match(analytics, /scope="(col|row)"/);
+    const operations = readFileSync(join(adminRoot, "Operations.tsx"), "utf8");
+    assert.match(operations, /listPlatformDeadLetterJobs|jobs\/dead/);
+    const channels = readFileSync(join(adminRoot, "ChannelHealth.tsx"), "utf8");
+    assert.match(channels, /<table/);
+    assert.match(channels, /LIVE_VERIFIED|status/);
+    assert.match(channels, /role="alert"|caption/);
+    assert.match(adminApp, /Skip to workspace content/);
+    assert.match(adminApp, /id="admin-main"/);
+    assert.match(app, /skipToMain|#main-content/);
+    assert.match(app, /id="main-content"/);
+  });
+});

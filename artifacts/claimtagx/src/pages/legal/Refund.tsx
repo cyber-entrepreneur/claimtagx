@@ -1,18 +1,24 @@
 import SEO from '@/components/SEO';
+import { useI18n } from '@/lib/i18n';
+import { legalPageSeo } from '@/lib/seo/legalLocalization';
 
+// Shell chrome is localized; legal body copy requires qualified human review before translation or publication as localized law.
 export default function Refund() {
+  const { t, locale } = useI18n();
   return (
     <>
       <SEO
-        title="Refund Policy | ClaimTagX"
-        description="Refund eligibility and conditions for ClaimTagX subscriptions and Tenant-provided services."
+        {...legalPageSeo("/refund", locale === "ar" ? "ar" : "en", {
+          title: t("legal.refund.seoTitle"),
+          description: t("legal.refund.seoDescription"),
+        })}
       />
       <div className="pt-32 pb-20 max-w-[800px] mx-auto px-4 sm:px-6">
-        <h1 className="text-4xl font-bold text-white mb-2">Refund Policy</h1>
-        <p className="text-slate text-sm mb-2">Effective Date: April 20, 2026</p>
-        <p className="text-slate text-sm mb-10 pb-10 border-b border-white/10">Last Updated: April 17, 2026</p>
+        <h1 className="text-4xl font-bold text-white mb-2">{t('legal.refund.title')}</h1>
+        <p className="text-ink text-sm mb-2">{t('legal.effectiveDate', { date: 'April 20, 2026' })}</p>
+        <p className="text-ink text-sm mb-10 pb-10 border-b border-white/10">{t('legal.lastUpdated', { date: 'April 17, 2026' })}</p>
 
-        <div className="prose prose-invert prose-slate max-w-none text-slate-300 space-y-4 leading-relaxed">
+        <div className="prose prose-invert prose-slate max-w-none text-ink-300 space-y-4 leading-relaxed">
           <h2 className="text-2xl font-bold text-white mt-10 mb-4">1. Overview</h2>
           <p>This Refund Policy governs all purchases made through ClaimTagX ("Platform"), including subscription plans and any paid services offered by Tenants through the Platform.</p>
           <p>ClaimTagX operates as a digital custody management infrastructure platform. Refund eligibility is limited and subject to the conditions outlined below.</p>
@@ -65,8 +71,8 @@ export default function Refund() {
           </ul>
           <p>Subscription billing and refund processing is handled by Paddle. For payment-specific questions, you may also contact Paddle directly through your billing portal.</p>
 
-          <p className="text-slate text-sm italic mt-10 pt-10 border-t border-white/10">ClaimTagX is operated by Ali Achkar (sole proprietor). This notice will be updated upon formal incorporation.</p>
-          <p className="text-slate text-sm italic">© 2026 ClaimTagX. All rights reserved.</p>
+          <p className="text-ink text-sm italic mt-10 pt-10 border-t border-white/10">ClaimTagX is operated by Ali Achkar (sole proprietor). This notice will be updated upon formal incorporation.</p>
+          <p className="text-ink text-sm italic">© 2026 ClaimTagX. All rights reserved.</p>
         </div>
       </div>
     </>

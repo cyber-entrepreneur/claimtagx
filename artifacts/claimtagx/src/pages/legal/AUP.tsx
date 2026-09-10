@@ -1,17 +1,23 @@
 import SEO from '@/components/SEO';
+import { useI18n } from '@/lib/i18n';
+import { legalPageSeo } from '@/lib/seo/legalLocalization';
 
+// Shell chrome is localized; legal body copy requires qualified human review before translation or publication as localized law.
 export default function AUP() {
+  const { t, locale } = useI18n();
   return (
     <>
-      <SEO 
-        title="Acceptable Use Policy | ClaimTagX"
-        description="Acceptable Use Policy for ClaimTagX."
+      <SEO
+        {...legalPageSeo("/aup", locale === "ar" ? "ar" : "en", {
+          title: t("legal.aup.seoTitle"),
+          description: t("legal.aup.seoDescription"),
+        })}
       />
       <div className="pt-32 pb-20 max-w-[800px] mx-auto px-4 sm:px-6">
-        <h1 className="text-4xl font-bold text-white mb-2">Acceptable Use Policy</h1>
-        <p className="text-slate text-sm mb-10 pb-10 border-b border-white/10">Last updated: April 17, 2026</p>
-        
-        <div className="prose prose-invert prose-slate max-w-none text-slate-300">
+        <h1 className="text-4xl font-bold text-white mb-2">{t('legal.aup.title')}</h1>
+        <p className="text-ink text-sm mb-10 pb-10 border-b border-white/10">{t('legal.lastUpdatedLower', { date: 'April 17, 2026' })}</p>
+
+        <div className="prose prose-invert prose-slate max-w-none text-ink-300">
           <p>This Acceptable Use Policy ("AUP") outlines the acceptable use of the ClaimTagX platform and services. All users must comply with this AUP.</p>
           
           <h2 className="text-2xl font-bold text-white mt-8 mb-4">1. Prohibited Activities</h2>

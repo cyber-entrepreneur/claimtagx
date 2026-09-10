@@ -38,8 +38,26 @@ if (!npmExecPath) {
   process.exit(1);
 }
 
+console.log("==> Validating marketing CMS manifest...");
+run(process.execPath, ["scripts/validate-marketing-content.mjs"]);
+
+console.log("==> Generating sitemap...");
+run(process.execPath, ["scripts/generate-sitemap.mjs"]);
+
 console.log("==> Building marketing site...");
 run(process.execPath, [npmExecPath, "exec", "vite", "build", "--config", "artifacts/claimtagx/vite.config.ts"]);
+
+console.log("==> Prerendering public HTML metadata shells...");
+run(process.execPath, ["scripts/prerender-public-html.mjs"]);
+
+console.log("==> Validating SEO HTML output...");
+run(process.execPath, ["scripts/validate-seo-html.mjs"]);
+
+console.log("==> Validating i18n key parity...");
+run(process.execPath, ["scripts/validate-i18n.mjs"]);
+
+console.log("==> Validating public copy gate...");
+run(process.execPath, ["scripts/validate-public-copy.mjs"]);
 
 console.log("==> Building handler app (BASE_PATH=/handler/)...");
 run(process.execPath, [npmExecPath, "--filter", "@workspace/handler-app", "run", "build"], {
