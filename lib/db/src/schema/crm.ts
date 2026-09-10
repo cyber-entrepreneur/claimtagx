@@ -378,7 +378,8 @@ export const crmStaffTable = pgTable(
   "crm_staff",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    clerkUserId: text("clerk_user_id"),
+    /** First-party auth linkage (`auth_accounts.id`). Unique when present. */
+    authAccountId: text("auth_account_id"),
     email: text("email").notNull(),
     emailNormalized: text("email_normalized").notNull(),
     name: text("name").notNull(),
@@ -397,7 +398,7 @@ export const crmStaffTable = pgTable(
   },
   (t) => ({
     emailUniq: uniqueIndex("crm_staff_email_uniq").on(t.emailNormalized),
-    clerkUniq: uniqueIndex("crm_staff_clerk_uniq").on(t.clerkUserId),
+    authAccountUniq: uniqueIndex("crm_staff_auth_account_uniq").on(t.authAccountId),
   }),
 );
 
@@ -848,12 +849,15 @@ export const crmStaffInvitesTable = pgTable(
     emailNormalized: text("email_normalized").notNull(),
     role: text("role").notNull().default("sales"),
     invitedBy: uuid("invited_by").references(() => crmStaffTable.id),
+    /** SHA-256 of the single-use invite token (plaintext is emailed once). */
+    tokenHash: text("token_hash"),
     expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
     acceptedAt: timestamp("accepted_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
     emailUniq: uniqueIndex("crm_staff_invites_email_uniq").on(t.emailNormalized),
+    tokenHashUniq: uniqueIndex("crm_staff_invites_token_hash_uniq").on(t.tokenHash),
   }),
 );
 

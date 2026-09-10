@@ -1,6 +1,37 @@
 -- Forward: 0001_crm_durable_jobs.sql, 0002_crm_email_threading.sql, 0003_crm_ops.sql
 -- Rollback guidance (staging only; production requires explicit authorization):
 
+-- 0023 rollback (identity finalization; documentation only — production requires restore/forward-fix)
+-- 0023 reconciles staff to auth_accounts by verified unique email, removes the
+-- retired hosted-IdP staff column, and adds crm_staff_auth_account_fk.
+-- Do NOT attempt to recreate or repopulate retired hosted-IdP columns as a
+-- rollback path. The supported reversal is restoring a verified pre-0023 backup
+-- into an isolated database, validating it, then either promoting that restore
+-- or applying a forward-fix migration.
+-- ALTER TABLE crm_staff DROP CONSTRAINT IF EXISTS crm_staff_auth_account_fk;
+-- DELETE FROM crm_schema_migrations WHERE filename LIKE '0023\_%' ESCAPE '\';
+
+-- 0021 rollback (first-party auth; documentation only — do not execute against databases with user data)
+-- Only valid before 0023 has been applied or after restoring a pre-0023 backup.
+-- It removes the additive first-party auth objects and auth_account_id link.
+-- DROP INDEX IF EXISTS crm_staff_auth_account_uniq;
+-- ALTER TABLE crm_staff DROP COLUMN IF EXISTS auth_account_id;
+-- DROP TABLE IF EXISTS auth_bootstrap_tokens;
+-- DROP TABLE IF EXISTS auth_security_events;
+-- DROP TABLE IF EXISTS auth_rate_limits;
+-- DROP TABLE IF EXISTS auth_verifications;
+-- DROP TABLE IF EXISTS auth_session_tokens;
+-- DROP TABLE IF EXISTS auth_sessions;
+-- DROP TABLE IF EXISTS auth_credentials;
+-- DROP TABLE IF EXISTS auth_identifiers;
+-- DROP TABLE IF EXISTS auth_accounts;
+-- After reversal, also delete the 0021 row from crm_schema_migrations so the
+-- migrator can re-apply it later:
+--   DELETE FROM crm_schema_migrations WHERE filename = '0021_first_party_auth.sql';
+-- Forward-recovery: to re-apply, re-run applyCrmMigrations(); 0021 is idempotent
+-- (IF NOT EXISTS throughout) and additive.
+
+
 -- 0003 rollback
 -- DROP TABLE IF EXISTS crm_staff_invites;
 -- DROP TABLE IF EXISTS crm_session_revocations;
