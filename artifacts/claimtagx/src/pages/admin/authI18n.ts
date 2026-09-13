@@ -219,7 +219,7 @@ const en: AuthStrings = {
 
 const ar: AuthStrings = {
   brand: "ClaimTagX",
-  workspace: "عمليات التواصل",
+  workspace: "إدارة التواصل مع العملاء",
   languageToggleLabel: "اللغة",
   switchToArabic: "العربية",
   switchToEnglish: "English",
@@ -239,7 +239,7 @@ const ar: AuthStrings = {
   errorSummaryTitle: "يرجى تصحيح ما يلي:",
 
   signInTitle: "تسجيل الدخول",
-  signInSubtitle: "الوصول إلى مساحة عمل عمليات التواصل في ClaimTagX.",
+  signInSubtitle: "سجّل الدخول إلى مساحة إدارة التواصل مع العملاء في ClaimTagX.",
   signInSubmit: "تسجيل الدخول",
   forgotPasswordLink: "هل نسيت كلمة المرور؟",
 
@@ -248,27 +248,27 @@ const ar: AuthStrings = {
   passwordRequired: "أدخل كلمة المرور.",
   codeRequired: "أدخل رمز المصادقة.",
   codeFormat: "أدخل الرمز المكوّن من 6 أرقام.",
-  passwordTooShort: "استخدم 12 حرفًا على الأقل.",
+  passwordTooShort: "استخدم كلمة مرور لا تقل عن 12 خانة.",
   passwordsDoNotMatch: "كلمتا المرور غير متطابقتين.",
   nameRequired: "أدخل اسمك.",
 
-  invalidCredentials: "البريد الإلكتروني أو كلمة المرور غير صحيحة.",
-  throttled: "محاولات كثيرة جدًا. يرجى الانتظار قليلاً والمحاولة مرة أخرى.",
-  locked: "الوصول مقفل مؤقتًا. حاول لاحقًا أو تواصل مع أحد المالكين.",
+  invalidCredentials: "البريد الإلكتروني أو كلمة المرور غير صحيح.",
+  throttled: "تجاوزت عدد المحاولات المسموح به. انتظر قليلًا ثم أعد المحاولة.",
+  locked: "تسجيل الدخول محظور مؤقتًا. حاول لاحقًا أو تواصل مع أحد مالكي مساحة العمل.",
   suspended: "هذا الحساب غير نشط. تواصل مع أحد مالكي مساحة العمل.",
-  sessionExpired: "انتهت جلستك. يرجى تسجيل الدخول مرة أخرى.",
+  sessionExpired: "انتهت صلاحية جلسة الدخول. يرجى تسجيل الدخول مجددًا.",
   networkError: "تعذّر الوصول إلى الخادم. تحقق من اتصالك وحاول مرة أخرى.",
   genericError: "حدث خطأ ما. يرجى المحاولة مرة أخرى.",
 
   mfaTitle: "التحقق بخطوتين",
   mfaSubtitle: "أدخل الرمز من تطبيق المصادقة الخاص بك.",
-  mfaSubmit: "تحقق",
+  mfaSubmit: "تأكيد الرمز",
   mfaUseRecovery: "استخدم رمز استرداد بدلاً من ذلك",
   mfaInvalidCode: "هذا الرمز غير صالح. يرجى المحاولة مرة أخرى.",
 
   recoveryTitle: "استخدام رمز استرداد",
   recoverySubtitle: "أدخل أحد رموز الاسترداد المحفوظة لديك.",
-  recoverySubmit: "تحقق",
+  recoverySubmit: "تأكيد الرمز",
   recoveryUseApp: "استخدم تطبيق المصادقة بدلاً من ذلك",
   recoveryInvalidCode: "رمز الاسترداد غير صالح. يرجى المحاولة مرة أخرى.",
 
@@ -278,10 +278,10 @@ const ar: AuthStrings = {
   forgotBackToSignIn: "العودة إلى تسجيل الدخول",
   forgotSentTitle: "تحقق من بريدك الإلكتروني",
   forgotSentBody:
-    "إذا كان هناك حساب مطابق لهذا البريد، فقد أرسلنا تعليمات إعادة تعيين كلمة المرور. تنتهي صلاحية الرابط قريبًا.",
+    "إذا كان هذا البريد مرتبطًا بحساب، فستصلك تعليمات إعادة تعيين كلمة المرور. تنتهي صلاحية الرابط قريبًا.",
 
   resetTitle: "اختر كلمة مرور جديدة",
-  resetSubtitle: "قم بتعيين كلمة مرور جديدة لحسابك.",
+  resetSubtitle: "حدّد كلمة مرور جديدة لحسابك.",
   resetSubmit: "تحديث كلمة المرور",
   resetSuccessTitle: "تم تحديث كلمة المرور",
   resetSuccessBody: "تم تحديث كلمة المرور. يمكنك الآن تسجيل الدخول.",
@@ -290,18 +290,18 @@ const ar: AuthStrings = {
   resetExpiredBody: "انتهت صلاحية رابط إعادة تعيين كلمة المرور هذا.",
   resetUsedBody: "تم استخدام رابط إعادة تعيين كلمة المرور هذا بالفعل.",
   resetRequestNew: "طلب رابط جديد",
-  goToSignIn: "الذهاب إلى تسجيل الدخول",
+  goToSignIn: "تسجيل الدخول",
 
   inviteTitle: "قبول دعوتك",
-  inviteSubtitle: "قم بتعيين كلمة مرور لتفعيل وصولك إلى عمليات التواصل.",
+  inviteSubtitle: "حدّد كلمة مرور لتفعيل حسابك في مساحة إدارة التواصل مع العملاء.",
   inviteSubmit: "تفعيل الحساب",
   inviteInvalidTitle: "مشكلة في الدعوة",
   inviteInvalidBody: "رابط الدعوة هذا غير صالح أو انتهت صلاحيته.",
-  inviteSuccessTitle: "أصبح كل شيء جاهزًا",
+  inviteSuccessTitle: "تم تفعيل حسابك",
   inviteSuccessBody: "حسابك نشط الآن. يمكنك تسجيل الدخول.",
 
   bootstrapTitle: "إعداد المالك الأول",
-  bootstrapSubtitle: "أنشئ حساب مالك مساحة العمل الأولي.",
+  bootstrapSubtitle: "أنشئ أول حساب بصلاحية مالك مساحة العمل.",
   bootstrapSubmit: "إنشاء حساب المالك",
   bootstrapInvalidTitle: "مشكلة في رابط الإعداد",
   bootstrapInvalidBody: "رابط الإعداد هذا غير صالح أو انتهت صلاحيته.",
@@ -309,7 +309,7 @@ const ar: AuthStrings = {
   signedOutTitle: "تم تسجيل الخروج",
   signedOutBody: "تم تسجيل خروجك من هذا الجهاز.",
   loggedOutEverywhereTitle: "تم تسجيل الخروج من كل الأجهزة",
-  loggedOutEverywhereBody: "تم تسجيل الخروج من جميع جلساتك.",
+  loggedOutEverywhereBody: "أُنهيت جميع جلسات تسجيل الدخول الخاصة بك.",
 };
 
 export const AUTH_DICTIONARIES: Record<AuthLang, AuthStrings> = { en, ar };
